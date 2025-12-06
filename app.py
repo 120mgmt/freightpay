@@ -1,0 +1,1 @@
+print('FreightPay App Loaded')
