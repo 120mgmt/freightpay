@@ -78,7 +78,7 @@ FreightPay/
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/freightpay.git
+git clone https://github.com/120mgmt/freightpay.git
 cd freightpay
 
 # Create virtual environment
@@ -286,13 +286,12 @@ heroku run python -m utils.database init
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file
+MIT License 
 
 ## Support
 
-- **Documentation**: [docs.freightpay.com](https://docs.freightpay.com)
-- **Email**: support@freightpay.com
-- **Issues**: [GitHub Issues](https://github.com/yourusername/freightpay/issues)
+- **Email**: info@120mgmt.com
+- **Issues**: [GitHub Issues](https://github.com/120mgmt/freightpay/issues)
 
 ## Contributing
 
