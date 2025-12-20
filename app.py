@@ -7,5 +7,7 @@ def home():
     return "FreightPay is running"
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
-
+    app.run(host="0.0.0.0", po
+@app.route("/gusto/callback")
+def gusto_callback():
+    return "Gusto callback reached"
