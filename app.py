@@ -1,5 +1,5 @@
-app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)))
-from flask import Flask
+from flask import Flask, request
+import os
 
 app = Flask(__name__)
 
@@ -7,14 +7,12 @@ app = Flask(__name__)
 def home():
     return "FreightPay is running"
 
-if __name__ == "__main__":
-   app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000))) 
-@app.route("/gusto/callback")
-def gusto_callback():
-    return "Gusto callback reached"
-from flask import request
-
 @app.route("/gusto/callback")
 def gusto_callback():
     code = request.args.get("code")
     return f"Gusto callback received. Code: {code}"
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
+
