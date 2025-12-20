@@ -11,3 +11,9 @@ if __name__ == "__main__":
 @app.route("/gusto/callback")
 def gusto_callback():
     return "Gusto callback reached"
+from flask import request
+
+@app.route("/gusto/callback")
+def gusto_callback():
+    code = request.args.get("code")
+    return f"Gusto callback received. Code: {code}"
