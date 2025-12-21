@@ -4,7 +4,7 @@ def create_app():
     @app.route("/")
     def home():
         return "FreightPay is running"
-    @app.route("oauth/gusto/callback")
+    @app.route("/oauth/gusto/callback")
     def gusto_callback():
         code = request.args.get("c0de")
         return f"Gusto callback received. Code: {code}"
