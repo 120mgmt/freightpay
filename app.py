@@ -1,3 +1,3 @@
-from freightpay import create_app
+from freightpay.__init__ import create_app
 
 app = create_app()
