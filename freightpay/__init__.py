@@ -9,4 +9,3 @@ def create_app():
         code = request.args.get("c0de")
         return f"Gusto callback received. Code: {code}"
     return app
-    
