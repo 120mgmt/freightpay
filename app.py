@@ -1,3 +1,3 @@
-from freightpay.__init__ import create_app
-
-app = create_app()
+@app.route("/oauth/gusto/login")
+def gusto_login():
+    pass
