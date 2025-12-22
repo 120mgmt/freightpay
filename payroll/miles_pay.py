@@ -1,7 +1,6 @@
-def calculate_miles_pay(miles, rate_per_mile):
-    """
-    Trucking pay-per-mile calculation.
-    """
-  if miles < 0 or rate_per_mile < 0:
-      raise ValueError("Miles and rate must be non-negative")
-    return round(miles * rate_per_mile, 2)
+@app.post("/api/payroll/run/miles")
+def api_run_miles_payroll():
+    payload = request.get_json(force=True) or {}
+    drivers = payload.get("drivers", [])
+    results = run_payroll(drivers)
+    return jsonify({"results": results})
