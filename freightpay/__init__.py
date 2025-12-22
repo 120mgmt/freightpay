@@ -1,30 +1,15 @@
+from flask import redirect
 import os
-import requests
-from flask import Flask, request, redirect
+import urllib.parse
 
-def create_app():
-    app = Flask(__name__)
+@app.route("/oauth/gusto/login")
+def gusto_login():
+    params = {
+        "client_id": os.environ["GUSTO_CLIENT_ID"],
+        "redirect_uri": "https://freightpay.onrender.com/oauth/gusto/callback",
+        "response_type": "code",
+        "scope": "companies:read employees:read contractors:read"
+    }
 
-    @app.route("/")
-    def home():
-        return "FreightPay is running"
-
-    @app.route("/oauth/gusto/authorize")
-    def gusto_authorize():
-        client_id = os.environ.get("GUSTO_CLIENT_ID")
-        redirect_uri = "https://freightpay.onrender.com/oauth/gusto/callback"
-
-        return redirect(
-            f"https://api.gusto.com/oauth/authorize"
-            f"?client_id={client_id}"
-            f"&redirect_uri={redirect_uri}"
-            f"&response_type=code"
-        )
-
-    @app.route("/oauth/gusto/callback")
-    def gusto_callback():
-        code = request.args.get("code")
-        return f"Gusto callback received. Code: {code}"
-
-    return app
-
+    url = "https://api.gusto.com/oauth/authorize?" + urllib.parse.urlencode(params)
+    return redirect(url)
