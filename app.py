@@ -11,5 +11,5 @@ def gusto_login():
         "scope": "companies:read employees:read contractors:read"
     }
 
-    url = "https://api.gusto.com/oauth/authorize?" + urllib.parse.urlencode(params)
+    url = "https://api.gusto-demo.com/oauth/authorize?" + urllib.parse.urlencode(params)
     return redirect(url)
