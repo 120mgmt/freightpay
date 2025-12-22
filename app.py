@@ -1,10 +1,11 @@
 from flask import Flask, request, jsonify
 import os
 
-# Core modules you already uploaded
-from payroll_engine import run_payroll
-from contractor_pay import calculate_contractor_pay
-from taxes import calculate_taxes
+# correct imports based on your repo structure
+from payroll.payroll_engine import run_payroll
+from payroll.deductions import calculate_deductions
+from services.contractor_pay import calculate_contractor_pay
+from services.taxes import calculate_taxes
 
 app = Flask(__name__)
 
