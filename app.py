@@ -1,7 +1,7 @@
-from flask import redirect
+from flask import Flask, redirect
 import os
 import urllib.parse
-
+app = Flask(__name__)
 @app.route("/oauth/gusto/login")
 def gusto_login():
     params = {
