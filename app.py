@@ -1,19 +1,28 @@
-
-from flask import Flask, jsonify, request
-from payroll.payroll_engine import run_payroll
-from payroll.deductions import calculate_deductions
-from payroll.contractor_pay import calculate_contractor_pay
+from flask import Flask, request, jsonify
+from payroll import run_payroll
+from payroll.export_csv import settlements_to_csv
 
 app = Flask(__name__)
 
-@app.route("/", methods=["GET"])
+@app.get("/")
 def health():
     return jsonify({"status": "FreightPay running"})
 
-@app.route("/payroll/run", methods=["POST"])
-def payroll():
-    data = request.json
-    return jsonify(run_payroll(data))
+@app.post("/api/payroll/run")
+def api_run_payroll():
+    payload = request.get_json(force=True) or {}
+    contractors = payload.get("contractors", [])
+    results = run_payroll(contractors)
+    return jsonify({"results": results})
 
-if __name__ == "__main__":
-    app.run()
+@app.post("/api/payroll/export/csv")
+def api_export_csv():
+    payload = request.get_json(force=True) or {}
+    contractors = payload.get("contractors", [])
+    results = run_payroll(contractors)
+    csv_data = settlements_to_csv(results)
+    return (csv_data, 200, {
+        "Content-Type": "text/csv",
+        "Content-Disposition": "attachment; filename=payroll_settlements.csv"
+    })
+
