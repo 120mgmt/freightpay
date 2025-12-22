@@ -1,31 +1,61 @@
 from .miles_pay import calculate_miles_pay
 from .deductions import calculate_deductions
 
-def run_payroll(contractors):
+
+def run_payroll(workers):
+    """
+    Universal payroll runner.
+    Supports contractors (1099) and drivers paid by:
+    - miles
+    - flat
+    - percentage
+    - accessorials (detention, layover, fuel advance, misc)
+    """
+
     results = []
 
-    for c in contractors:
-        pay_type = c.get("pay_type", "flat")  # "mile" or "flat"
+    for w in workers:
+        pay_type = w.get("pay_type", "flat")
 
+        gross = 0.0
+
+        # PAY LOGIC
         if pay_type == "mile":
-            miles = float(c.get("miles", 0))
-            rate = float(c.get("rate_per_mile", 0))
+            miles = float(w.get("miles", 0))
+            rate = float(w.get("rate_per_mile", 0))
             gross = calculate_miles_pay(miles, rate)
-        else:
-            gross = float(c.get("gross_pay", 0))
 
-        deductions = float(c.get("deductions", 0))
+        elif pay_type == "percentage":
+            load_amount = float(w.get("load_amount", 0))
+            percent = float(w.get("percentage", 0))
+            gross = round(load_amount * percent, 2)
+
+        else:  # flat
+            gross = float(w.get("gross_pay", 0))
+
+        # ACCESSORIALS
+        detention = float(w.get("detention", 0))
+        layover = float(w.get("layover", 0))
+        fuel_advance = float(w.get("fuel_advance", 0))
+        misc = float(w.get("misc", 0))
+
+        gross += detention + layover + misc
+        gross -= fuel_advance
+
+        # DEDUCTIONS
+        deductions = float(w.get("deductions", 0))
         if deductions == 0:
-            deductions = float(calculate_deductions(gross))
+            deductions = calculate_deductions(gross)
 
         net = round(gross - deductions, 2)
 
         results.append({
-            "contractor_id": c.get("id"),
+            "contractor_id": w.get("id"),
             "pay_type": pay_type,
-            "gross": gross,
-            "deductions": deductions,
+            "gross": round(gross, 2),
+            "deductions": round(deductions, 2),
             "net": net
         })
 
     return results
+
