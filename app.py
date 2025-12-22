@@ -1,15 +1,15 @@
-from flask import Flask, redirect
-import os
-import urllib.parse
-app = Flask(__name__)
-@app.route("/oauth/gusto/login")
-def gusto_login():
-    params = {
-        "client_id": os.environ["GUSTO_CLIENT_ID"],
-        "redirect_uri": "https://freightpay.onrender.com/oauth/gusto/callback",
-        "response_type": "code",
-        "scope": "companies:read employees:read contractors:read"
-    }
 
-    url = "https://api.gusto-demo.com/oauth/authorize?" + urllib.parse.urlencode(params)
-    return redirect(url)
+from flask import Flask, jsonify
+from config import Config
+from db import db
+
+app = Flask(__name__)
+app.config.from_object(Config)
+db.init_app(app)
+
+@app.route("/")
+def index():
+    return jsonify({"status": "FreightPay running"})
+
+if __name__ == "__main__":
+    app.run()
