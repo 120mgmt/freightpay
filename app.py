@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify
-from payroll import run_payroll
+from payroll.engine import run_payroll
 from payroll.export_csv import settlements_to_csv
 
 app = Flask(__name__)
