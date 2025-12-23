@@ -1,1 +1,56 @@
-<h1>Run Payroll</h1>
+<!-- templates/payroll_run.html — FULL FILE -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FreightPay – Run Payroll</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; background:#f7f9fc; margin:0; padding:20px; }
+    h1 { color:#0b5ed7; }
+    .card { background:#fff; border-radius:6px; padding:16px; margin-bottom:16px; box-shadow:0 2px 6px rgba(0,0,0,.08); }
+    label { display:block; margin-top:10px; font-weight:bold; }
+    input, textarea { width:100%; padding:8px; margin-top:6px; }
+    button { margin-top:14px; padding:10px 16px; background:#0b5ed7; color:#fff; border:none; border-radius:4px; font-weight:bold; cursor:pointer; }
+    button:hover { background:#094db3; }
+    pre { background:#111; color:#0f0; padding:12px; overflow:auto; }
+  </style>
+</head>
+<body>
+
+  <h1>Run Payroll</h1>
+
+  <div class="card">
+    <label>Pay Period</label>
+    <input id="pay_period" placeholder="WEEK ENDING YYYY-MM-DD" />
+
+    <label>Contractors (JSON)</label>
+    <textarea id="contractors" rows="8" placeholder='[{"contractor_id":"1","miles":1200,"rate_per_mile":0.6}]'></textarea>
+
+    <button onclick="runPayroll()">Run Payroll</button>
+  </div>
+
+  <div class="card">
+    <h3>Results</h3>
+    <pre id="results"></pre>
+  </div>
+
+<script>
+async function runPayroll() {
+  const pay_period = document.getElementById("pay_period").value;
+  const contractors = JSON.parse(document.getElementById("contractors").value || "[]");
+
+  const res = await fetch("/api/payroll/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pay_period, contractors })
+  });
+
+  const data = await res.json();
+  document.getElementById("results").textContent = JSON.stringify(data, null, 2);
+}
+</script>
+
+</body>
+</html>
