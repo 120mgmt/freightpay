@@ -1,48 +1,43 @@
-from flask import Flask, request, jsonify
+from flask import Flask, jsonify, request
+import os
 
+# ---- App init ----
 app = Flask(__name__)
 
-# =========================
-# REGISTER BLUEPRINTS
-# =========================
-from bookkeeping.routes import bookkeeping_bp
-app.register_blueprint(bookkeeping_bp)
-
-# =========================
-# HEALTH CHECK
-# =========================
-@app.get("/")
+# ---- Health / root ----
+@app.route("/", methods=["GET"])
 def health():
     return jsonify({
-        "service": "payroll"
-       "status": "FreightPay live"
+        "service": "payroll",
+        "status": "FreightPay live"
     })
 
-# =========================
-# PAYROLL API
-# =========================
-from payroll.engine import run_payroll
-from payroll.export_csv import settlements_to_csv
+# ---- Bookkeeping ledger hook ----
+# This records payroll results into the in-memory ledger
+from bookkeeping.ledger import record_payroll_run, get_ledger
 
-@app.post("/api/payroll/run")
-def api_run_payroll():
-    payload = request.get_json(force=True) or {}
-    contractors = payload.get("contractors", [])
-    results = run_payroll(contractors)
-    return jsonify({"results": results})
+@app.route("/bookkeeping/record", methods=["POST"])
+def record_bookkeeping():
+    data = request.json or {}
 
-@app.post("/api/payroll/export/csv")
-def api_export_csv():
-    payload = request.get_json(force=True) or {}
-    contractors = payload.get("contractors", [])
-    results = run_payroll(contractors)
-    csv_data = settlements_to_csv(results)
-    return (
-        csv_data,
-        200,
-        {
-            "Content-Type": "text/csv",
-            "Content-Disposition": "attachment; filename=payroll_settlements.csv"
-        }
+    entry = record_payroll_run(
+        pay_period=data.get("pay_period"),
+        contractor_id=data.get("contractor_id"),
+        gross=float(data.get("gross", 0)),
+        reimbursements=float(data.get("reimbursements", 0)),
+        deductions=float(data.get("deductions", 0)),
+        net=float(data.get("net", 0)),
     )
- 
+    return jsonify(entry), 201
+
+@app.route("/bookkeeping/ledger", methods=["GET"])
+def view_ledger():
+    return jsonify(get_ledger())
+
+# ---- Run (Render / Gunicorn safe) ----
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+
+          
