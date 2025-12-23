@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, Response, render_template
 import os
-
+from routes.payroll_routes import payroll_bp
 # ─────────────────────────────────────────
 # Imports
 # ─────────────────────────────────────────
@@ -11,7 +11,7 @@ from bookkeeping.export_quickbooks import export_quickbooks_csv
 # App init
 # ─────────────────────────────────────────
 app = Flask(__name__)
-
+app.register_blueprint(payroll_bp)
 # ─────────────────────────────────────────
 # Root / Health
 # ─────────────────────────────────────────
