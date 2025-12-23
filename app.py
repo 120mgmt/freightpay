@@ -1,10 +1,8 @@
-# app.py — FULL FILE (ready to paste)
-
-from flask import Flask, jsonify, request, Response
+from flask import Flask, jsonify, request, Response, render_template
 import os
 
 # ─────────────────────────────────────────
-# Bookkeeping imports
+# Imports
 # ─────────────────────────────────────────
 from bookkeeping.ledger import get_ledger
 from bookkeeping.export_quickbooks import export_quickbooks_csv
@@ -15,14 +13,28 @@ from bookkeeping.export_quickbooks import export_quickbooks_csv
 app = Flask(__name__)
 
 # ─────────────────────────────────────────
-# Health check
+# Root / Health
 # ─────────────────────────────────────────
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({
+        "app": "FreightPay",
+        "status": "running"
+    })
+
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify({
         "service": "payroll",
         "status": "FreightPay live"
     })
+
+# ─────────────────────────────────────────
+# Dashboard (UI)
+# ─────────────────────────────────────────
+@app.route("/dashboard", methods=["GET"])
+def dashboard():
+    return render_template("dashboard.html")
 
 # ─────────────────────────────────────────
 # Bookkeeping → QuickBooks CSV export
@@ -41,17 +53,7 @@ def export_quickbooks():
     )
 
 # ─────────────────────────────────────────
-# Root (optional but safe)
-# ─────────────────────────────────────────
-@app.route("/", methods=["GET"])
-def root():
-    return jsonify({
-        "app": "FreightPay",
-        "status": "running"
-    })
-
-# ─────────────────────────────────────────
-# Run
+# Run (Render / Gunicorn safe)
 # ─────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
