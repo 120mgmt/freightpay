@@ -12,7 +12,7 @@ from bookkeeping.export_quickbooks import export_quickbooks_csv
 # App init
 # ─────────────────────────────────────────
 app = Flask(__name__)
-app.register_blueprint(payroll_bp)
+app.register_blueprint(payroll_bp, url_prefix="/payroll")
 # ─────────────────────────────────────────
 # Root / Health
 # ─────────────────────────────────────────
