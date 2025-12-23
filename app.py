@@ -19,7 +19,7 @@ app.register_blueprint(payroll_bp, url_prefix="/payroll")
 @app.route("/", methods=["GET"])
 def root():
     return jsonify({
-        "app": "FreightPay",
+        "app": "freightpay",
         "status": "running"
     })
 
@@ -27,7 +27,7 @@ def root():
 def health():
     return jsonify({
         "service": "payroll",
-        "status": "FreightPay live"
+        "status": "freightpay live"
     })
 
 # ─────────────────────────────────────────
