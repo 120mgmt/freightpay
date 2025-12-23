@@ -1,43 +1,58 @@
-from flask import Flask, jsonify, request
+# app.py — FULL FILE (ready to paste)
+
+from flask import Flask, jsonify, request, Response
 import os
 
-# ---- App init ----
+# ─────────────────────────────────────────
+# Bookkeeping imports
+# ─────────────────────────────────────────
+from bookkeeping.ledger import get_ledger
+from bookkeeping.export_quickbooks import export_quickbooks_csv
+
+# ─────────────────────────────────────────
+# App init
+# ─────────────────────────────────────────
 app = Flask(__name__)
 
-# ---- Health / root ----
-@app.route("/", methods=["GET"])
+# ─────────────────────────────────────────
+# Health check
+# ─────────────────────────────────────────
+@app.route("/health", methods=["GET"])
 def health():
     return jsonify({
         "service": "payroll",
         "status": "FreightPay live"
     })
 
-# ---- Bookkeeping ledger hook ----
-# This records payroll results into the in-memory ledger
-from bookkeeping.ledger import record_payroll_run, get_ledger
+# ─────────────────────────────────────────
+# Bookkeeping → QuickBooks CSV export
+# ─────────────────────────────────────────
+@app.route("/bookkeeping/quickbooks/export", methods=["GET"])
+def export_quickbooks():
+    ledger = get_ledger()
+    csv_data = export_quickbooks_csv(ledger)
 
-@app.route("/bookkeeping/record", methods=["POST"])
-def record_bookkeeping():
-    data = request.json or {}
-
-    entry = record_payroll_run(
-        pay_period=data.get("pay_period"),
-        contractor_id=data.get("contractor_id"),
-        gross=float(data.get("gross", 0)),
-        reimbursements=float(data.get("reimbursements", 0)),
-        deductions=float(data.get("deductions", 0)),
-        net=float(data.get("net", 0)),
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": "attachment; filename=freightpay_quickbooks_export.csv"
+        }
     )
-    return jsonify(entry), 201
 
-@app.route("/bookkeeping/ledger", methods=["GET"])
-def view_ledger():
-    return jsonify(get_ledger())
+# ─────────────────────────────────────────
+# Root (optional but safe)
+# ─────────────────────────────────────────
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({
+        "app": "FreightPay",
+        "status": "running"
+    })
 
-# ---- Run (Render / Gunicorn safe) ----
+# ─────────────────────────────────────────
+# Run
+# ─────────────────────────────────────────
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
-
-          
