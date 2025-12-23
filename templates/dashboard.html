@@ -1,1 +1,67 @@
-<h1>Dashboard</h1>
+<!-- templates/dashboard.html — FULL FILE -->
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>FreightPay Dashboard</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f7f9fc;
+      margin: 0;
+      padding: 20px;
+    }
+    h1 {
+      color: #0b5ed7;
+    }
+    .card {
+      background: #ffffff;
+      border-radius: 6px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+    }
+    .btn {
+      display: inline-block;
+      padding: 10px 16px;
+      background: #0b5ed7;
+      color: #fff;
+      text-decoration: none;
+      border-radius: 4px;
+      font-weight: bold;
+    }
+    .btn:hover {
+      background: #094db3;
+    }
+    ul {
+      padding-left: 18px;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>FreightPay</h1>
+
+  <div class="card">
+    <h2>System Status</h2>
+    <ul>
+      <li>Payroll Engine: Active</li>
+      <li>Bookkeeping Ledger: Active</li>
+      <li>QuickBooks Export: Ready</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <h2>Actions</h2>
+    <p>
+      <a class="btn" href="/bookkeeping/quickbooks/export">
+        Download QuickBooks CSV
+      </a>
+    </p>
+  </div>
+
+</body>
+</html>
+
