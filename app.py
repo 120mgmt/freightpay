@@ -1,6 +1,6 @@
 from flask import Flask, jsonify, request, Response, render_template
 import os
-from routes.payroll_routes import payroll_bp
+from Freightpay.routes.payroll_routes import payroll_bp
 # ─────────────────────────────────────────
 # Imports
 # ─────────────────────────────────────────
