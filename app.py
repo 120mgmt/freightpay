@@ -1,35 +1,48 @@
 from flask import Flask, request, jsonify
-from payroll.engine import run_payroll
-from payroll.export_csv import settlements_to_csv
 
 app = Flask(__name__)
 
+# =========================
+# REGISTER BLUEPRINTS
+# =========================
+from bookkeeping.routes import bookkeeping_bp
+app.register_blueprint(bookkeeping_bp)
+
+# =========================
+# HEALTH CHECK
+# =========================
 @app.get("/")
 def health():
     return jsonify({
-        "status": "FreightPay live",
         "service": "payroll"
+       "status": "FreightPay live"
     })
 
+# =========================
+# PAYROLL API
+# =========================
+from payroll.engine import run_payroll
+from payroll.export_csv import settlements_to_csv
+
 @app.post("/api/payroll/run")
-def run_payroll_api():
+def api_run_payroll():
     payload = request.get_json(force=True) or {}
-    drivers = payload.get("drivers", [])
-    results = run_payroll(drivers)
+    contractors = payload.get("contractors", [])
+    results = run_payroll(contractors)
     return jsonify({"results": results})
 
-@app.post("/api/payroll/export")
-def export_payroll_csv():
+@app.post("/api/payroll/export/csv")
+def api_export_csv():
     payload = request.get_json(force=True) or {}
-    drivers = payload.get("drivers", [])
-    results = run_payroll(drivers)
+    contractors = payload.get("contractors", [])
+    results = run_payroll(contractors)
     csv_data = settlements_to_csv(results)
-
     return (
         csv_data,
         200,
         {
             "Content-Type": "text/csv",
-            "Content-Disposition": "attachment; filename=freightpay_settlements.csv"
+            "Content-Disposition": "attachment; filename=payroll_settlements.csv"
         }
     )
+ 
