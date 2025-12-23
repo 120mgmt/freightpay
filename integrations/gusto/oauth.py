@@ -1,52 +1,48 @@
-import os
+from flask import Blueprint, redirect, request
 import requests
-from flask import Blueprint, redirect, request, jsonify
+import os
 
 gusto_bp = Blueprint("gusto", __name__)
 
-GUSTO_ENV = os.getenv("GUSTO_ENV", "demo")  # demo or prod
-CLIENT_ID = os.getenv("GUSTO_CLIENT_ID")
-CLIENT_SECRET = os.getenv("GUSTO_CLIENT_SECRET")
-REDIRECT_URI = os.getenv("GUSTO_REDIRECT_URI")
+GUSTO_CLIENT_ID = os.getenv("GUSTO_CLIENT_ID")
+GUSTO_CLIENT_SECRET = os.getenv("GUSTO_CLIENT_SECRET")
+GUSTO_REDIRECT_URI = os.getenv("GUSTO_REDIRECT_URI")
+GUSTO_ENV = os.getenv("GUSTO_ENV", "demo")
 
-BASE_URL = "https://api.gusto-demo.com" if GUSTO_ENV == "demo" else "https://api.gusto.com"
-AUTH_URL = f"{BASE_URL}/oauth/authorize"
-TOKEN_URL = f"{BASE_URL}/oauth/token"
+AUTH_URL = (
+    "https://api.gusto-demo.com/oauth/authorize"
+    if GUSTO_ENV == "demo"
+    else "https://api.gusto.com/oauth/authorize"
+)
 
+TOKEN_URL = (
+    "https://api.gusto-demo.com/oauth/token"
+    if GUSTO_ENV == "demo"
+    else "https://api.gusto.com/oauth/token"
+)
 
-@gusto_bp.route("/oauth/gusto/login")
+@gusto_bp.route("/gusto/login")
 def gusto_login():
     return redirect(
-        f"{AUTH_URL}"
-        f"?client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
-        f"&response_type=code"
-        f"&scope=contractors companies"
+        f"{AUTH_URL}?client_id={GUSTO_CLIENT_ID}"
+        f"&redirect_uri={GUSTO_REDIRECT_URI}"
+        f"&response_type=code&scope=payroll:read payroll:write"
     )
 
-
-@gusto_bp.route("/oauth/gusto/callback")
+@gusto_bp.route("/gusto/callback")
 def gusto_callback():
     code = request.args.get("code")
-    if not code:
-        return jsonify({"error": "Missing authorization code"}), 400
 
-    token_resp = requests.post(
+    response = requests.post(
         TOKEN_URL,
         data={
+            "client_id": GUSTO_CLIENT_ID,
+            "client_secret": GUSTO_CLIENT_SECRET,
+            "redirect_uri": GUSTO_REDIRECT_URI,
             "grant_type": "authorization_code",
             "code": code,
-            "client_id": CLIENT_ID,
-            "client_secret": CLIENT_SECRET,
-            "redirect_uri": REDIRECT_URI,
         },
     )
 
-    token_data = token_resp.json()
-
-    return jsonify({
-        "status": "connected",
-        "access_token": token_data.get("access_token"),
-        "refresh_token": token_data.get("refresh_token"),
-    })
-
+    return response.json()
+    
