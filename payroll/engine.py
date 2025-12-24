@@ -1,6 +1,6 @@
 # payroll/engine.py
 from __future__ import annotations
-
+from utils.database import get_db_session
 from typing import Any, Dict, List, Tuple, Union
 
 from payroll.accessorials import compute_accessorials
