@@ -1,74 +1,97 @@
-# FreightPay/payroll/engine.py
+from decimal import Decimal, ROUND_HALF_UP
 
-from .miles_pay import calculate_miles_pay
-from .accessorials import compute_earnings, compute_reimbursements, compute_deductions
-
-
-def _f(x, default=0.0) -> float:
-    try:
-        if x is None or x == "":
-            return float(default)
-        return float(x)
-    except (TypeError, ValueError):
-        return float(default)
+def d(val):
+    return Decimal(str(val or 0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
 
 
-def run_payroll(contractors):
+def run_payroll(payload: dict):
     """
-    Supports trucking pay:
-      - pay_type: "mile" or "flat"
-      - mile pay inputs: miles, rate_per_mile
-      - flat pay input: gross_pay
-
-    Optional trucking additions (all in the payload per contractor):
-      - earnings: {detention_hours, detention_rate, layover, stops, stop_rate, tonu,
-                   breakdown_hours, breakdown_rate, breakdown_flat, bonuses, minimum_guarantee}
-      - reimbursements: {tolls, scales, parking, lumper, washout, other}
-      - deductions: {percent (0.10 or 10), fixed, fuel_advance_repay, escrow_hold, escrow_release,
-                     equipment_rental, insurance, chargebacks, garnishments, other}
+    Expected payload structure:
+    {
+      "period": "2025-01",
+      "workers": [
+        {
+          "id": "drv_001",
+          "type": "contractor",  // or "employee"
+          "pay": {
+            "miles": 2500,
+            "rate_per_mile": 0.65,
+            "hourly_hours": 0,
+            "hourly_rate": 0,
+            "salary": 0
+          },
+          "accessorials": {
+            "detention_hours": 6,
+            "detention_rate": 30,
+            "layover": 150,
+            "stop_pay": 75,
+            "tolls": 120,
+            "other": 50
+          },
+          "deductions": {
+            "advances": 200,
+            "escrow": 50,
+            "fuel": 300,
+            "insurance": 100
+          },
+          "bonuses": {
+            "safety": 100,
+            "performance": 150
+          }
+        }
+      ]
+    }
     """
+
     results = []
-    contractors = contractors or []
+    grand_total = d(0)
 
-    for c in contractors:
-        pay_type = (c.get("pay_type") or "flat").lower()
+    for w in payload.get("workers", []):
+        pay = w.get("pay", {})
+        acc = w.get("accessorials", {})
+        ded = w.get("deductions", {})
+        bon = w.get("bonuses", {})
 
-        # 1) Base gross
-        if pay_type == "mile":
-            miles = _f(c.get("miles"))
-            rate = _f(c.get("rate_per_mile"))
-            base_gross = calculate_miles_pay(miles, rate)
-        else:
-            base_gross = _f(c.get("gross_pay"))
+        mileage_pay = d(pay.get("miles")) * d(pay.get("rate_per_mile"))
+        hourly_pay = d(pay.get("hourly_hours")) * d(pay.get("hourly_rate"))
+        salary_pay = d(pay.get("salary"))
 
-        # 2) Accessorial earnings (adds to taxable gross)
-        earnings_breakdown = compute_earnings(c.get("earnings") or {})
-        accessorial_total = _f(earnings_breakdown.get("total_earnings_accessorials"))
+        detention_pay = d(acc.get("detention_hours")) * d(acc.get("detention_rate"))
 
-        taxable_gross = round(base_gross + accessorial_total, 2)
-
-        # 3) Reimbursements (paid on top of net; do NOT reduce taxable gross)
-        reimburse_breakdown = compute_reimbursements(c.get("reimbursements") or {})
-        reimburse_total = _f(reimburse_breakdown.get("total_reimbursements"))
-
-        # 4) Deductions (reduce net; can include percent of taxable gross)
-        deductions_breakdown = compute_deductions(c.get("deductions") or {}, taxable_gross)
-        deductions_total = _f(deductions_breakdown.get("total_deductions"))
-
-        # 5) Net
-        net = round(taxable_gross - deductions_total + reimburse_total, 2)
-
-        results.append(
-            {
-                "contractor_id": c.get("id") or c.get("contractor_id"),
-                "pay_type": pay_type,
-                "base_gross": round(base_gross, 2),
-                "taxable_gross": taxable_gross,
-                "earnings": earnings_breakdown,
-                "reimbursements": reimburse_breakdown,
-                "deductions": deductions_breakdown,
-                "net": net,
-            }
+        accessorial_total = (
+            detention_pay
+            + d(acc.get("layover"))
+            + d(acc.get("stop_pay"))
+            + d(acc.get("tolls"))
+            + d(acc.get("other"))
         )
 
-    return results
+        bonus_total = d(bon.get("safety")) + d(bon.get("performance"))
+
+        gross = mileage_pay + hourly_pay + salary_pay + accessorial_total + bonus_total
+
+        deductions_total = (
+            d(ded.get("advances"))
+            + d(ded.get("escrow"))
+            + d(ded.get("fuel"))
+            + d(ded.get("insurance"))
+        )
+
+        net = gross - deductions_total
+
+        grand_total += net
+
+        results.append({
+            "worker_id": w.get("id"),
+            "worker_type": w.get("type"),
+            "gross_pay": float(gross),
+            "total_deductions": float(deductions_total),
+            "net_pay": float(net)
+        })
+
+    return {
+        "period": payload.get("period"),
+        "total_workers": len(results),
+        "total_net_pay": float(grand_total),
+        "details": results
+    }
