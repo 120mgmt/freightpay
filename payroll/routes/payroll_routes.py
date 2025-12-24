@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify
 from payroll.engine import run_payroll
 
 #IMPORTANT:
-# - B;ueprint name must be UNIQUE across the whole app
+# - Blueprint name must be UNIQUE across the whole app
 # - Do NOT set url_prefix here since app.py already sets url_prefix="/payroll"
 payroll_bp = Blueprint("payroll_api", __name__)
 
