@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from payroll.engine import run_payroll
 
-payroll_bp = Blueprint("payroll", __name__, url_prefix="/payroll")
+payroll_bp = Blueprint("payroll_api", __name__)
 
 @payroll_bp.route("/run", methods=["POST"])
 def run_payroll_route():
