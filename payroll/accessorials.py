@@ -1,8 +1,3 @@
-
-Ashley Ross <info@120mgmt.com>
-1:29 AM (0 minutes ago)
-to me
-
 # payroll/accessorials.py
 from __future__ import annotations
 
