@@ -1,12 +1,12 @@
 # payroll/engine.py
 from __future__ import annotations
-from utils.database import get_db_session
-from typing import Any, Dict, List, Tuple, Union
+
+from typing import Any, Dict, List, Union
 
 from payroll.accessorials import compute_accessorials
 from payroll.deductions import compute_deductions
-
-__all__ = ["run_payroll"]
+from payroll.database import get_db_session
+from payroll.pay_config import compute_base_gross
 
 
 def _f(x: Any, default: float = 0.0) -> float:
@@ -18,80 +18,39 @@ def _f(x: Any, default: float = 0.0) -> float:
         return float(default)
 
 
-def _s(x: Any, default: str = "") -> str:
-    return default if x is None else str(x)
-
-
-def compute_base_gross(contractor: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
-    """
-    Base pay supports:
-      - pay_type "mile": miles * rate_per_mile
-      - pay_type "flat": flat_amount
-      - pay_type "hour": hours * hourly_rate
-      - pay_type "percent": revenue * percent_rate  (e.g., 0.25 = 25%)
-    """
-    pay_type = _s(contractor.get("pay_type"), "mile").lower()
-
-    if pay_type == "flat":
-        base = _f(contractor.get("flat_amount"))
-        detail = {"pay_type": "flat", "flat_amount": base}
-
-    elif pay_type == "hour":
-        hours = _f(contractor.get("hours"))
-        rate = _f(contractor.get("hourly_rate"))
-        base = hours * rate
-        detail = {"pay_type": "hour", "hours": hours, "hourly_rate": rate}
-
-    elif pay_type == "percent":
-        revenue = _f(contractor.get("revenue"))
-        pct = _f(contractor.get("percent_rate"))
-        base = revenue * pct
-        detail = {"pay_type": "percent", "revenue": revenue, "percent_rate": pct}
-
-    else:  # default mile
-        miles = _f(contractor.get("miles"))
-        rpm = _f(contractor.get("rate_per_mile"))
-        base = miles * rpm
-        detail = {"pay_type": "mile", "miles": miles, "rate_per_mile": rpm}
-
-    return base, detail
-
-
-def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[str, Any]:
+def run_payroll(
+    payload: Union[Dict[str, Any], List[Dict[str, Any]]]
+) -> Dict[str, Any]:
     """
     Accepts either:
-      - payload dict: {"contractors":[...]}
-      - contractors list directly: [...]
-    Returns: {"results":[...], "totals": {...}}
+    - full payload dict with key 'contractors'
+    - OR a raw list of contractors
     """
 
-    # Fix #1 (from your logs): handle list payloads so we never call .get on a list
+    # --- normalize payload ---
     if isinstance(payload, list):
-        contractors: List[Dict[str, Any]] = payload
+        contractors = payload
+    elif isinstance(payload, dict):
+        contractors = payload.get("contractors", [])
     else:
-        contractors = payload.get("contractors") or []
-        if not isinstance(contractors, list):
-            return {"error": "Missing/invalid 'contractors' (must be a list)."}
+        contractors = []
 
     results: List[Dict[str, Any]] = []
 
-    totals: Dict[str, float] = {
+    totals = {
         "base_gross_total": 0.0,
         "accessorials_total": 0.0,
         "deductions_total": 0.0,
         "net_total": 0.0,
     }
 
+    # --- per contractor ---
     for c in contractors:
-        if not isinstance(c, dict):
-            continue
-
         contractor_id = c.get("id")
 
         base_gross, base_detail = compute_base_gross(c)
 
         access = compute_accessorials(c.get("accessorials"))
-        # Fix #2 (from your logs): accessorials uses key "total", not "total_accessorials"
         access_total = _f(access.get("total", 0.0))
 
         deductions = compute_deductions(c.get("deductions"))
@@ -117,25 +76,29 @@ def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[st
             }
         )
 
-# persist payroll run (single record per run)
-db = get_db_session()
-db.execute(
-    """
-    INSERT INTO payroll_runs (
-        base_gross_total,
-        accessorials_total,
-        deductions_total,
-        net_total
+    # --- persist payroll run ---
+    db = get_db_session()
+    db.execute(
+        """
+        INSERT INTO payroll_runs (
+            base_gross_total,
+            accessorials_total,
+            deductions_total,
+            net_total
+        )
+        VALUES (:base, :access, :deductions, :net)
+        """,
+        {
+            "base": totals["base_gross_total"],
+            "access": totals["accessorials_total"],
+            "deductions": totals["deductions_total"],
+            "net": totals["net_total"],
+        },
     )
-    VALUES (:base, :access, :deductions, :net)
-    """,
-    {
-        "base": totals.get("base_gross_total", 0.0),
-        "access": totals.get("accessorials_total", 0.0),
-        "deductions": totals.get("deductions_total", 0.0),
-        "net": totals.get("net_total", 0.0),
-    },
-)
-db.commit()
+    db.commit()
 
-    return {"results": results, "totals": totals}
+    return {
+        "results": results,
+        "totals": totals,
+    }
+
