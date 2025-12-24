@@ -5,7 +5,7 @@ from . .engine import run_payroll
 
 payroll_bp = Blueprint("payroll", __name__)
 
-@payroll_bp.post("/run", methods=[POST"])
+@payroll_bp.post("/run", methods=["POST"])
 def run_payroll_route():
     data = request.get_json(silent=True) or {}
     contractors = data.get("contractors", []) 
