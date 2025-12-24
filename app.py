@@ -1,29 +1,29 @@
-import os
-from flask import Flask, jsonify
+from flask import Flask, request, jsonify
+from payroll.engine import run_payroll
 
-from payroll.routes.payroll_routes import payroll_bp
+app = Flask(__name__)
 
-
-def create_app() -> Flask:
-    app = Flask(__name__)
-
-    # Health
-    @app.get("/")
-    def root():
-        return jsonify({"app": "freightpay", "status": "running"}), 200
-
-    @app.get("/health")
-    def health():
-        return jsonify({"status": "ok"}), 200
-
-    # Blueprints
-    app.register_blueprint(payroll_bp)
-
-    return app
+@app.route("/", methods=["GET"])
+def health():
+    return jsonify({
+        "status": "running",
+        "service": "FreightPay",
+        "mode": "production"
+    }), 200
 
 
-app = create_app()
+@app.route("/api/payroll/run", methods=["POST"])
+def payroll_run():
+    try:
+        payload = request.get_json(force=True)
+        result = run_payroll(payload)
+        return jsonify(result), 200
+    except Exception as e:
+        return jsonify({
+            "error": "PAYROLL_EXECUTION_FAILED",
+            "message": str(e)
+        }), 500
+
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
