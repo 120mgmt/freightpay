@@ -117,4 +117,29 @@ def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[st
             }
         )
 
+Ashley Ross <info@120mgmt.com>
+8:19 AM (2 minutes ago)
+to me
+
+# persist payroll run (single record per run)
+db = get_db_session()
+db.execute(
+    """
+    INSERT INTO payroll_runs (
+        base_gross_total,
+        accessorials_total,
+        deductions_total,
+        net_total
+    )
+    VALUES (:base, :access, :deductions, :net)
+    """,
+    {
+        "base": totals.get("base_gross_total", 0.0),
+        "access": totals.get("accessorials_total", 0.0),
+        "deductions": totals.get("deductions_total", 0.0),
+        "net": totals.get("net_total", 0.0),
+    },
+)
+db.commit()
+
     return {"results": results, "totals": totals}
