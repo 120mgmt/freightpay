@@ -1,61 +1,45 @@
-from flask import Flask, jsonify, request, Response, render_template
 import os
-from payroll.payroll_routes import payroll_bp
-# ─────────────────────────────────────────
-# Imports
-# ─────────────────────────────────────────
+from flask import Flask, jsonify
 
+# IMPORTANT:
+# Your repo has a /payroll folder (not freightpay/routes), so import from payroll.*
+from payroll.payroll_routes import payroll_bp
+
+# Optional bookkeeping imports (only keep if these files exist exactly as shown)
 from bookkeeping.ledger import get_ledger
 from bookkeeping.export_quickbooks import export_quickbooks_csv
 
-# ─────────────────────────────────────────
-# App init
-# ─────────────────────────────────────────
+
 app = Flask(__name__)
+
+# Blueprints
 app.register_blueprint(payroll_bp, url_prefix="/payroll")
-# ─────────────────────────────────────────
-# Root / Health
-# ─────────────────────────────────────────
-@app.route("/", methods=["GET"])
+
+
+# Health
+@app.get("/")
 def root():
-    return jsonify({
-        "app": "freightpay",
-        "status": "running"
-    })
+    return jsonify({"app": "freightpay", "status": "running"}), 200
 
-@app.route("/health", methods=["GET"])
+
+@app.get("/health")
 def health():
-    return jsonify({
-        "service": "payroll",
-        "status": "freightpay live"
-    })
+    return jsonify({"status": "ok"}), 200
 
-# ─────────────────────────────────────────
-# Dashboard (UI)
-# ─────────────────────────────────────────
-@app.route("/dashboard", methods=["GET"])
-def dashboard():
-    return render_template("dashboard.html")
 
-# ─────────────────────────────────────────
-# Bookkeeping → QuickBooks CSV export
-# ─────────────────────────────────────────
-@app.route("/bookkeeping/quickbooks/export", methods=["GET"])
-def export_quickbooks():
-    ledger = get_ledger()
-    csv_data = export_quickbooks_csv(ledger)
+# Bookkeeping endpoints (simple, production-safe stubs)
+@app.get("/bookkeeping/ledger")
+def ledger():
+    return jsonify(get_ledger()), 200
 
-    return Response(
-        csv_data,
-        mimetype="text/csv",
-        headers={
-            "Content-Disposition": "attachment; filename=freightpay_quickbooks_export.csv"
-        }
-    )
 
-# ─────────────────────────────────────────
-# Run (Render / Gunicorn safe)
-# ─────────────────────────────────────────
+@app.get("/bookkeeping/export/quickbooks.csv")
+def quickbooks_export():
+    csv_text = export_quickbooks_csv()
+    return (csv_text, 200, {"Content-Type": "text/csv"})
+
+
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 10000))
+    port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
+
