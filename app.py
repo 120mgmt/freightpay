@@ -6,7 +6,7 @@ from payroll.routes.payroll_routes import payroll_bp
 app = Flask(__name__)
 
 # Register blueprint (blueprint already has /payroll prefix i nside it)
-app.register_blueprint(payroll_bp)
+app.register_blueprint(payroll_bp, url_prefix="/payroll")
 
 @app.get("/")
 def root():
