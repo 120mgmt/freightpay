@@ -79,7 +79,7 @@ def apply_minimum_guarantee(base_gross: float, contractor: Dict[str, Any]) -> Tu
 
 
 def run_payroll(payload: Dict[str, Any]) -> Dict[str, Any]:
-    contractors: List[Dict[str, Any]] = payload.get("contractors") or []
+    contractors: List[Dict[str, Any]] = payload or []
     if not isinstance(contractors, list):
         return {"ok": False, "error": "contractors must be a list"}
 
