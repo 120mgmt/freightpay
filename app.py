@@ -5,7 +5,9 @@ from payroll.routes.payroll_routes import payroll_bp
 
 app = Flask(__name__)
 
-# Routes
+# Register blueprint (blueprint already has /payroll prefix i nside it)
+app.register_blueprint(payroll_bp)
+
 @app.get("/")
 def root():
     return jsonify({"app": "freightpay", "status": "running"}), 200
