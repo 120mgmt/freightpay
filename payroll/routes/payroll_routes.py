@@ -1,11 +1,11 @@
 from flask import Blueprint, request, jsonify
-from paroll.engine import run_payroll
+from payroll.engine import run_payroll
 
 payroll_bp = Blueprint("payroll", __name__, url_prefix="/payroll")
 
-
 @payroll_bp.post("/run")
-def payroll_run():
+def run_payroll_route():
     data = request.get_json(silent=True) or {}
-    result = run_payroll(data)
-    return jsonify(result), 200
+    contractors = data.get("contractors", []) or []
+    results = run_payroll(contractors)
+    return jsonify({"status": "ok", "results": results}), 200
