@@ -105,7 +105,7 @@ def run_payroll(payload: Dict[str, Any]) -> Dict[str, Any]:
         access = compute_accessorials(c.get("earnings") or c.get("accessorials"))
         deds = compute_deductions(c.get("deductions"))
 
-        gross = base_gross + access["total_accessorials"]
+        gross = base_gross + access.get("total", 0.0)
         net = gross - deds["total_deductions"]
 
         row = {
