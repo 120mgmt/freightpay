@@ -3,7 +3,7 @@ from flask import Flask, jsonify
 
 # IMPORTANT:
 # Your repo has a /payroll folder (not freightpay/routes), so import from payroll.*
-from payroll.payroll_routes import payroll_bp
+from payroll.routes.payroll_routes import payroll_bp
 
 # Optional bookkeeping imports (only keep if these files exist exactly as shown)
 from bookkeeping.ledger import get_ledger
