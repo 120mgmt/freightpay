@@ -1,7 +1,19 @@
+
+Ashley Ross <info@120mgmt.com>
+1:29 AM (0 minutes ago)
+to me
+
 # payroll/accessorials.py
 from __future__ import annotations
 
 from typing import Any, Dict
+
+__all__ = [
+    "compute_accessorials",
+    "compute_earnings",        # backward compatibility
+    "compute_reimbursements",  # future-proof
+    "compute_deductions",      # future-proof
+]
 
 
 def _to_float(value: Any, default: float = 0.0) -> float:
@@ -18,18 +30,9 @@ def _to_float(value: Any, default: float = 0.0) -> float:
         return float(default)
 
 
-def compute_earnings(earnings: Dict[str, Any] | None) -> Dict[str, float]:
-    """
-    Earnings add to taxable gross (unless you later separate taxable/non-taxable).
-    Standard trucking earnings:
-      - detention (hours * rate)
-      - layover (flat)
-      - stop_pay (stops * rate)
-      - tonu (flat)
-      - breakdown (hours * rate) + optional breakdown_flat
-      - bonuses (flat)
-    """
-    e: Dict[str, Any] = earnings or {}
+# === ACCESSORIAL / EARNINGS ===
+def compute_accessorials(data: Dict[str, Any] | None) -> Dict[str, float]:
+    e: Dict[str, Any] = data or {}
 
     detention = _to_float(e.get("detention_hours")) * _to_float(e.get("detention_rate"))
     layover = _to_float(e.get("layover"))
@@ -56,64 +59,16 @@ def compute_earnings(earnings: Dict[str, Any] | None) -> Dict[str, float]:
     }
 
 
-def compute_reimbursements(reimbursements: Dict[str, Any] | None) -> Dict[str, float]:
-    """
-    Reimbursements are typically non-taxable (policy-dependent).
-    Common buckets:
-      - fuel
-      - tolls
-      - lumper
-      - parking
-      - other
-    """
-    r: Dict[str, Any] = reimbursements or {}
-
-    fuel = _to_float(r.get("fuel"))
-    tolls = _to_float(r.get("tolls"))
-    lumper = _to_float(r.get("lumper"))
-    parking = _to_float(r.get("parking"))
-    other = _to_float(r.get("other"))
-
-    total = fuel + tolls + lumper + parking + other
-
-    return {
-        "fuel": fuel,
-        "tolls": tolls,
-        "lumper": lumper,
-        "parking": parking,
-        "other": other,
-        "total": total,
-    }
+# === ALIASES (ENGINE SAFETY) ===
+def compute_earnings(data: Dict[str, Any] | None) -> Dict[str, float]:
+    return compute_accessorials(data)
 
 
-def compute_deductions(deductions: Dict[str, Any] | None) -> Dict[str, float]:
-    """
-    Deductions reduce net pay.
-    Common buckets:
-      - admin_fee
-      - advances
-      - chargebacks
-      - equipment
-      - escrow
-      - other
-    """
-    d: Dict[str, Any] = deductions or {}
+def compute_reimbursements(data: Dict[str, Any] | None) -> Dict[str, float]:
+    # Placeholder for fuel, tolls, per diem, etc.
+    return {}
 
-    admin_fee = _to_float(d.get("admin_fee"))
-    advances = _to_float(d.get("advances"))
-    chargebacks = _to_float(d.get("chargebacks"))
-    equipment = _to_float(d.get("equipment"))
-    escrow = _to_float(d.get("escrow"))
-    other = _to_float(d.get("other"))
 
-    total = admin_fee + advances + chargebacks + equipment + escrow + other
-
-    return {
-        "admin_fee": admin_fee,
-        "advances": advances,
-        "chargebacks": chargebacks,
-        "equipment": equipment,
-        "escrow": escrow,
-        "other": other,
-        "total": total,
-    }
+def compute_deductions(data: Dict[str, Any] | None) -> Dict[str, float]:
+    # Placeholder for escrow, advances, chargebacks
+    return {}
