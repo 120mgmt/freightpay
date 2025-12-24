@@ -1,72 +1,132 @@
-# FreightPay/payroll/engine.py
+# payroll/engine.py
+from __future__ import annotations
 
-from .miles_pay import calculate_miles_pay
-from .accessorials import compute_earnings, compute_reimbursements, compute_deductions
+from typing import Any, Dict, List, Tuple
+
+from payroll.accessorials import compute_accessorials
+from payroll.deductions import compute_deductions
 
 
-def _f(x, default=0.0) -> float:
+def _f(x: Any, default: float = 0.0) -> float:
     try:
-        if x is None or x == "":
+        if x is None:
             return float(default)
         return float(x)
     except (TypeError, ValueError):
         return float(default)
 
 
-def run_payroll(contractors):
-    """
-    Supports trucking pay:
-      - pay_type: "mile" or "flat"
-      - mile pay inputs: miles, rate_per_mile
-      - flat pay input: gross_pay
+def _s(x: Any, default: str = "") -> str:
+    return default if x is None else str(x)
 
-    Optional per contractor:
-      - earnings: {...}         (detention, tonu, layover, stops, breakdown, bonuses, etc.)
-      - reimbursements: {...}   (tolls, scales, parking, lumper, washout, other)
-      - deductions: {...}       (percent, fixed, fuel_advance_repay, escrow_hold, equipment_rental, etc.)
+
+def compute_base_gross(contractor: Dict[str, Any]) -> Tuple[float, Dict[str, Any]]:
     """
-    results = []
-    contractors = contractors or []
+    Supports:
+      pay_type = "mile" -> miles * rate_per_mile
+      pay_type = "flat" -> flat_amount
+      pay_type = "percent" -> percent * (revenue or linehaul)
+    """
+    pay_type = _s(contractor.get("pay_type")).strip().lower()
+    meta: Dict[str, Any] = {"pay_type": pay_type}
+
+    if pay_type == "mile":
+        miles = _f(contractor.get("miles"))
+        rpm = _f(contractor.get("rate_per_mile"))
+        base = miles * rpm
+        meta.update({"miles": miles, "rate_per_mile": rpm})
+        return base, meta
+
+    if pay_type == "flat":
+        base = _f(contractor.get("flat_amount"))
+        meta.update({"flat_amount": base})
+        return base, meta
+
+    if pay_type == "percent":
+        pct = _f(contractor.get("percent"))  # e.g. 0.25 for 25%
+        # allow percent=25 and normalize
+        if pct > 1.0:
+            pct = pct / 100.0
+
+        revenue = contractor.get("revenue")
+        linehaul = contractor.get("linehaul")
+        base_on = _f(revenue) if revenue is not None else _f(linehaul)
+
+        base = pct * base_on
+        meta.update({"percent": pct, "base_on": base_on})
+        return base, meta
+
+    # default: zero, but mark invalid
+    meta.update({"error": "invalid_pay_type"})
+    return 0.0, meta
+
+
+def apply_minimum_guarantee(base_gross: float, contractor: Dict[str, Any]) -> Tuple[float, float]:
+    """
+    Optional weekly minimum guarantee logic.
+    If contractor["min_guarantee"] is provided and base_gross is below it,
+    top up to the guarantee. Returns (adjusted_base_gross, guarantee_topup).
+    """
+    guarantee = _f(contractor.get("min_guarantee"), default=0.0)
+    if guarantee <= 0:
+        return base_gross, 0.0
+
+    if base_gross >= guarantee:
+        return base_gross, 0.0
+
+    topup = guarantee - base_gross
+    return guarantee, topup
+
+
+def run_payroll(payload: Dict[str, Any]) -> Dict[str, Any]:
+    contractors: List[Dict[str, Any]] = payload.get("contractors") or []
+    if not isinstance(contractors, list):
+        return {"ok": False, "error": "contractors must be a list"}
+
+    results: List[Dict[str, Any]] = []
+    totals = {
+        "count": 0,
+        "gross_total": 0.0,
+        "accessorials_total": 0.0,
+        "deductions_total": 0.0,
+        "net_total": 0.0,
+        "guarantee_topups_total": 0.0,
+    }
 
     for c in contractors:
-        # 1) Base gross
-        pay_type = (c.get("pay_type") or "flat").lower()
+        if not isinstance(c, dict):
+            continue
 
-        if pay_type == "mile":
-            miles = _f(c.get("miles"))
-            rate = _f(c.get("rate_per_mile"))
-            base_gross = calculate_miles_pay(miles, rate)
-        else:
-            base_gross = _f(c.get("gross_pay"))
+        contractor_id = _s(c.get("id") or c.get("contractor_id") or c.get("driver_id"))
 
-        # 2) Accessorial earnings (adds to taxable gross)
-        earnings_breakdown = compute_earnings(c.get("earnings") or {})
-        earnings_total = _f(earnings_breakdown.get("total_earnings_accessorials"))
+        base_gross, base_meta = compute_base_gross(c)
+        base_gross, topup = apply_minimum_guarantee(base_gross, c)
 
-        taxable_gross = round(base_gross + earnings_total, 2)
+        access = compute_accessorials(c.get("earnings") or c.get("accessorials"))
+        deds = compute_deductions(c.get("deductions"))
 
-        # 3) Reimbursements (paid on top of net; do NOT reduce taxable gross)
-        reimburse_breakdown = compute_reimbursements(c.get("reimbursements") or {})
-        reimburse_total = _f(reimburse_breakdown.get("total_reimbursements"))
+        gross = base_gross + access["total_accessorials"]
+        net = gross - deds["total_deductions"]
 
-        # 4) Deductions (reduce net; can include percent of taxable gross)
-        deductions_breakdown = compute_deductions(c.get("deductions") or {}, taxable_gross)
-        deductions_total = _f(deductions_breakdown.get("total_deductions"))
+        row = {
+            "contractor_id": contractor_id or None,
+            "base_gross": round(base_gross, 2),
+            "guarantee_topup": round(topup, 2),
+            "base_meta": base_meta,
+            "accessorials": {k: round(v, 2) for k, v in access.items()},
+            "deductions": {k: round(v, 2) for k, v in deds.items()},
+            "gross": round(gross, 2),
+            "net": round(net, 2),
+        }
+        results.append(row)
 
-        # 5) Net
-        net = round(taxable_gross - deductions_total + reimburse_total, 2)
+        totals["count"] += 1
+        totals["gross_total"] += gross
+        totals["accessorials_total"] += access["total_accessorials"]
+        totals["deductions_total"] += deds["total_deductions"]
+        totals["net_total"] += net
+        totals["guarantee_topups_total"] += topup
 
-        results.append(
-            {
-                "contractor_id": c.get("id") or c.get("contractor_id"),
-                "pay_type": pay_type,
-                "base_gross": round(base_gross, 2),
-                "taxable_gross": taxable_gross,
-                "earnings": earnings_breakdown,
-                "reimbursements": reimburse_breakdown,
-                "deductions": deductions_breakdown,
-                "net": net,
-            }
-        )
+    totals = {k: (round(v, 2) if isinstance(v, (int, float)) else v) for k, v in totals.items()}
 
-    return results
+    return {"ok": True, "results": results, "totals": totals}
