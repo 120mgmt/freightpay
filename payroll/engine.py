@@ -122,7 +122,7 @@ def run_payroll(payload: Dict[str, Any]) -> Dict[str, Any]:
 
         totals["count"] += 1
         totals["gross_total"] += gross
-        totals["accessorials_total"] += access["total_accessorials"]
+        totals["accessorials_total"] += access.get("total",  0.0)
         totals["deductions_total"] += deds["total_deductions"]
         totals["net_total"] += net
         totals["guarantee_topups_total"] += topup
