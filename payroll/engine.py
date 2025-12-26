@@ -3,6 +3,9 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Tuple, Union
 
+from utils.database import get_db_session
+from payroll.payroll_run_status import can_edit_payroll_run
+
 from payroll.accessorials import compute_accessorials
 from payroll.deductions import compute_deductions
 
@@ -105,6 +108,18 @@ def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[st
         }
       }
     """
+
+    # --- Payroll Run Status Enforcement (NEW) ---
+    payroll_run_id = None
+    if isinstance(payload, dict):
+        payroll_run_id = payload.get("payroll_run_id")
+
+    if payroll_run_id:
+        db = get_db_session()
+        if not can_edit_payroll_run(db, str(payroll_run_id)):
+            return {"error": "Payroll run is finalized or locked."}
+    # --- End NEW ---
+
     contractors: List[Dict[str, Any]]
     if isinstance(payload, list):
         contractors = payload
@@ -157,4 +172,4 @@ def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[st
             }
         )
 
-    return {"results": results, "totals": totals}
+    return {"results": results, "totals": totals}   
