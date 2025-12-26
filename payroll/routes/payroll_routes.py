@@ -5,14 +5,16 @@ import uuid
 import sqlite3
 from datetime import datetime, timezone
 
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, Response
 
 from payroll.engine import run_payroll
+from payroll.export_csv import settlements_to_csv
+from billing.subscription_gate import require_active_subscription
 
-# Blueprint
+# Blueprint (versioned, safe to register once)
 payroll_bp = Blueprint("payroll_api_v1", __name__, url_prefix="/payroll")
 
-# SQLite persistence (self-contained for payroll routes)
+# SQLite persistence (swap later for Postgres without refactor)
 DB_PATH = os.getenv("PAYROLL_DB_PATH", "/tmp/payroll.db")
 
 
@@ -46,15 +48,19 @@ def _init_db():
 _init_db()
 
 
+# -----------------------
+# RUN PAYROLL
+# -----------------------
 @payroll_bp.route("/run", methods=["POST"])
+@require_active_subscription()
 def payroll_run():
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
-        return jsonify({"error": "Invalid JSON body. Send application/json."}), 400
+        return jsonify({"error": "Invalid JSON body"}), 400
 
     contractors = payload.get("contractors")
     if not isinstance(contractors, list):
-        return jsonify({"error": "Missing/invalid 'contractors' (must be a list)."}), 400
+        return jsonify({"error": "Missing/invalid contractors list"}), 400
 
     results = run_payroll(payload)
     if "error" in results:
@@ -79,8 +85,8 @@ def payroll_run():
             (
                 run_id,
                 created_at,
-                json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
-                json.dumps(results, separators=(",", ":"), ensure_ascii=False),
+                json.dumps(payload),
+                json.dumps(results),
             ),
         )
         conn.commit()
@@ -97,14 +103,18 @@ def payroll_run():
     ), 200
 
 
+# -----------------------
+# FINALIZE PAYROLL
+# -----------------------
 @payroll_bp.route("/finalize", methods=["POST"])
+@require_active_subscription()
 def payroll_finalize():
     data = request.get_json(silent=True) or {}
     run_id = data.get("run_id")
     user_id = data.get("user_id")
 
     if not run_id or not user_id:
-        return jsonify({"error": "run_id and user_id are required"}), 400
+        return jsonify({"error": "run_id and user_id required"}), 400
 
     finalized_at = datetime.now(timezone.utc).isoformat()
 
@@ -145,20 +155,17 @@ def payroll_finalize():
     ), 200
 
 
+# -----------------------
+# GET SINGLE RUN
+# -----------------------
 @payroll_bp.route("/runs/<run_id>", methods=["GET"])
+@require_active_subscription()
 def payroll_get_run(run_id: str):
     conn = _db()
     try:
         row = conn.execute(
             """
-            SELECT
-                run_id,
-                created_at,
-                payload_json,
-                results_json,
-                status,
-                finalized_at,
-                finalized_by
+            SELECT *
             FROM payroll_runs
             WHERE run_id = ?
             """,
@@ -183,7 +190,11 @@ def payroll_get_run(run_id: str):
     ), 200
 
 
+# -----------------------
+# LIST RUNS
+# -----------------------
 @payroll_bp.route("/runs", methods=["GET"])
+@require_active_subscription()
 def payroll_list_runs():
     limit = request.args.get("limit", "20")
     try:
@@ -217,3 +228,33 @@ def payroll_list_runs():
             ]
         }
     ), 200
+
+
+# -----------------------
+# EXPORT CSV
+# -----------------------
+@payroll_bp.route("/runs/<run_id>/export", methods=["GET"])
+@require_active_subscription()
+def payroll_export_csv(run_id: str):
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT results_json FROM payroll_runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+    finally:
+        conn.close()
+
+    if not row:
+        return jsonify({"error": "Run not found"}), 404
+
+    results = json.loads(row["results_json"])
+    csv_data = settlements_to_csv(results)
+
+    return Response(
+        csv_data,
+        mimetype="text/csv",
+        headers={
+            "Content-Disposition": f"attachment; filename=payroll_{run_id}.csv"
+        },
+    )
