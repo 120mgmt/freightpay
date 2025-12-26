@@ -9,10 +9,10 @@ from flask import Blueprint, request, jsonify
 
 from payroll.engine import run_payroll
 
-# ✅ Unique blueprint name (prevents "already registered" errors)
+# Unique blueprint name
 payroll_bp = Blueprint("payroll_api_v1", __name__, url_prefix="/payroll")
 
-# ✅ Zero-new-deps persistence (SQLite)
+# SQLite persistence (no new deps)
 DB_PATH = os.getenv("PAYROLL_DB_PATH", "/tmp/payroll.db")
 
 
@@ -45,7 +45,6 @@ _init_db()
 
 @payroll_bp.route("/run", methods=["POST"])
 def payroll_run():
-    # Expect JSON body: { "contractors": [ ... ] }
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify({"error": "Invalid JSON body. Send application/json."}), 400
@@ -54,13 +53,15 @@ def payroll_run():
     if not isinstance(contractors, list):
         return jsonify({"error": "Missing/invalid 'contractors' (must be a list)."}), 400
 
-    # Run payroll engine
-    results = run_payroll(contractors)
+    # Run payroll with full payload
+    results = run_payroll(payload)
+
+    if "error" in results:
+        return jsonify(results), 400
 
     run_id = str(uuid.uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
-    # Persist payload + results
     conn = _db()
     try:
         conn.execute(
@@ -72,14 +73,20 @@ def payroll_run():
                 run_id,
                 created_at,
                 json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
-                json.dumps({"results": results}, separators=(",", ":"), ensure_ascii=False),
+                json.dumps(results, separators=(",", ":"), ensure_ascii=False),
             ),
         )
         conn.commit()
     finally:
         conn.close()
 
-    return jsonify({"run_id": run_id, "created_at": created_at, "results": results}), 200
+    return jsonify(
+        {
+            "run_id": run_id,
+            "created_at": created_at,
+            "results": results,
+        }
+    ), 200
 
 
 @payroll_bp.route("/runs/<run_id>", methods=["GET"])
@@ -87,7 +94,11 @@ def payroll_get_run(run_id: str):
     conn = _db()
     try:
         row = conn.execute(
-            "SELECT run_id, created_at, payload_json, results_json FROM payroll_runs WHERE run_id = ?",
+            """
+            SELECT run_id, created_at, payload_json, results_json
+            FROM payroll_runs
+            WHERE run_id = ?
+            """,
             (run_id,),
         ).fetchone()
     finally:
@@ -117,10 +128,22 @@ def payroll_list_runs():
     conn = _db()
     try:
         rows = conn.execute(
-            "SELECT run_id, created_at FROM payroll_runs ORDER BY created_at DESC LIMIT ?",
+            """
+            SELECT run_id, created_at
+            FROM payroll_runs
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
             (limit_i,),
         ).fetchall()
     finally:
         conn.close()
 
-    return jsonify({"runs": [{"run_id": r["run_id"], "created_at": r["created_at"]} for r in rows]}), 200
+    return jsonify(
+        {
+            "runs": [
+                {"run_id": r["run_id"], "created_at": r["created_at"]}
+                for r in rows
+            ]
+        }
+    ), 200
