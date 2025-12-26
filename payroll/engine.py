@@ -63,7 +63,6 @@ def compute_base_gross(contractor: Dict[str, Any]) -> Tuple[float, Dict[str, Any
         base = hours * hourly_rate
         detail.update({"hours": hours, "hourly_rate": hourly_rate})
     elif pay_type == "percentage":
-        # Accept 30 (meaning 30%) or 0.30 (meaning 30%)
         pct = percent / 100.0 if percent > 1.0 else percent
         base = load_gross * pct
         detail.update({"load_gross": load_gross, "percent": pct})
@@ -71,7 +70,6 @@ def compute_base_gross(contractor: Dict[str, Any]) -> Tuple[float, Dict[str, Any
         base = flat_amount
         detail.update({"flat_amount": flat_amount})
     else:
-        # Safe fallback: treat unknown pay_type as flat
         base = flat_amount
         detail.update({"flat_amount": flat_amount, "fallback": True})
 
@@ -109,7 +107,7 @@ def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[st
       }
     """
 
-    # --- Payroll Run Status Enforcement (NEW) ---
+    # --- payroll run status enforcement ---
     payroll_run_id = None
     if isinstance(payload, dict):
         payroll_run_id = payload.get("payroll_run_id")
@@ -118,7 +116,8 @@ def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[st
         db = get_db_session()
         if not can_edit_payroll_run(db, str(payroll_run_id)):
             return {"error": "Payroll run is finalized or locked."}
-    # --- End NEW ---
+    # --- end enforcement ---
+
 
     contractors: List[Dict[str, Any]]
     if isinstance(payload, list):
@@ -146,7 +145,6 @@ def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[st
         base_gross, base_detail = compute_base_gross(c)
 
         access = compute_accessorials(c.get("accessorials"))
-        # accessorials module returns key "total"
         access_total = _f(access.get("total", 0.0))
 
         deductions = compute_deductions(c.get("deductions"))
@@ -172,4 +170,4 @@ def run_payroll(payload: Union[Dict[str, Any], List[Dict[str, Any]]]) -> Dict[st
             }
         )
 
-    return {"results": results, "totals": totals}   
+    return {"results": results, "totals": totals}
