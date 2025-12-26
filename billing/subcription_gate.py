@@ -5,7 +5,6 @@ import stripe
 from functools import wraps
 from flask import request, jsonify
 
-# Stripe configuration
 stripe.api_key = os.getenv("STRIPE_API_KEY")
 
 PRICE_IDS = {
@@ -16,14 +15,13 @@ PRICE_IDS = {
 
 
 def _get_customer_id():
-    # Priority: Header → JSON → Query param
     cid = request.headers.get("X-Stripe-Customer-Id")
     if cid:
         return cid
 
     payload = request.get_json(silent=True) or {}
-    if isinstance(payload, dict) and payload.get("customer_id"):
-        return payload["customer_id"]
+    if isinstance(payload, dict):
+        return payload.get("customer_id")
 
     return request.args.get("customer_id")
 
@@ -61,5 +59,7 @@ def require_active_subscription():
                 return jsonify({"error": "Active subscription required"}), 402
 
             return fn(*args, **kwargs)
+
         return wrapper
+
     return decorator
