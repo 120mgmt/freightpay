@@ -9,10 +9,10 @@ from flask import Blueprint, request, jsonify
 
 from payroll.engine import run_payroll
 
-# Unique blueprint name
+# Blueprint
 payroll_bp = Blueprint("payroll_api_v1", __name__, url_prefix="/payroll")
 
-# SQLite persistence (no new deps)
+# SQLite persistence (self-contained for payroll routes)
 DB_PATH = os.getenv("PAYROLL_DB_PATH", "/tmp/payroll.db")
 
 
@@ -31,7 +31,10 @@ def _init_db():
                 run_id TEXT PRIMARY KEY,
                 created_at TEXT NOT NULL,
                 payload_json TEXT NOT NULL,
-                results_json TEXT NOT NULL
+                results_json TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'draft',
+                finalized_at TEXT,
+                finalized_by TEXT
             )
             """
         )
@@ -53,9 +56,7 @@ def payroll_run():
     if not isinstance(contractors, list):
         return jsonify({"error": "Missing/invalid 'contractors' (must be a list)."}), 400
 
-    # Run payroll with full payload
     results = run_payroll(payload)
-
     if "error" in results:
         return jsonify(results), 400
 
@@ -66,8 +67,14 @@ def payroll_run():
     try:
         conn.execute(
             """
-            INSERT INTO payroll_runs (run_id, created_at, payload_json, results_json)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO payroll_runs (
+                run_id,
+                created_at,
+                payload_json,
+                results_json,
+                status
+            )
+            VALUES (?, ?, ?, ?, 'draft')
             """,
             (
                 run_id,
@@ -84,7 +91,56 @@ def payroll_run():
         {
             "run_id": run_id,
             "created_at": created_at,
+            "status": "draft",
             "results": results,
+        }
+    ), 200
+
+
+@payroll_bp.route("/finalize", methods=["POST"])
+def payroll_finalize():
+    data = request.get_json(silent=True) or {}
+    run_id = data.get("run_id")
+    user_id = data.get("user_id")
+
+    if not run_id or not user_id:
+        return jsonify({"error": "run_id and user_id are required"}), 400
+
+    finalized_at = datetime.now(timezone.utc).isoformat()
+
+    conn = _db()
+    try:
+        row = conn.execute(
+            "SELECT status FROM payroll_runs WHERE run_id = ?",
+            (run_id,),
+        ).fetchone()
+
+        if not row:
+            return jsonify({"error": "Run not found"}), 404
+
+        if row["status"] != "draft":
+            return jsonify({"error": "Run already finalized or locked"}), 400
+
+        conn.execute(
+            """
+            UPDATE payroll_runs
+            SET status = 'finalized',
+                finalized_at = ?,
+                finalized_by = ?
+            WHERE run_id = ?
+            """,
+            (finalized_at, user_id, run_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    return jsonify(
+        {
+            "run_id": run_id,
+            "status": "finalized",
+            "finalized_at": finalized_at,
+            "finalized_by": user_id,
         }
     ), 200
 
@@ -95,7 +151,14 @@ def payroll_get_run(run_id: str):
     try:
         row = conn.execute(
             """
-            SELECT run_id, created_at, payload_json, results_json
+            SELECT
+                run_id,
+                created_at,
+                payload_json,
+                results_json,
+                status,
+                finalized_at,
+                finalized_by
             FROM payroll_runs
             WHERE run_id = ?
             """,
@@ -111,6 +174,9 @@ def payroll_get_run(run_id: str):
         {
             "run_id": row["run_id"],
             "created_at": row["created_at"],
+            "status": row["status"],
+            "finalized_at": row["finalized_at"],
+            "finalized_by": row["finalized_by"],
             "payload": json.loads(row["payload_json"]),
             "results": json.loads(row["results_json"]),
         }
@@ -129,7 +195,7 @@ def payroll_list_runs():
     try:
         rows = conn.execute(
             """
-            SELECT run_id, created_at
+            SELECT run_id, created_at, status
             FROM payroll_runs
             ORDER BY created_at DESC
             LIMIT ?
@@ -142,7 +208,11 @@ def payroll_list_runs():
     return jsonify(
         {
             "runs": [
-                {"run_id": r["run_id"], "created_at": r["created_at"]}
+                {
+                    "run_id": r["run_id"],
+                    "created_at": r["created_at"],
+                    "status": r["status"],
+                }
                 for r in rows
             ]
         }
