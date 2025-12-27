@@ -6,14 +6,15 @@ import sys
 
 from flask import Flask, jsonify
 
-# ===== PATH FIX =====
-# Ensure the repo root (where app.py lives) is on sys.path so imports like
-# `from billing...` and `from payroll...` work reliably on Render.
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+# ===== PATH FIX (PRODUCTION) =====
+# Render runs from: /opt/render/project/src
+# billing/, payroll/, etc. are inside the same /src directory.
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+# ================================
 
-from payroll.routes.payroll_routes import payroll_bp  # noqa: E402
+from payroll.routes.payroll_routes import payroll_bp
 
 
 def create_app() -> Flask:
