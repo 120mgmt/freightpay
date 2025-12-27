@@ -1,3 +1,8 @@
+
+Ashley Ross <info@120mgmt.com>
+9:48 PM (0 minutes ago)
+to me
+
 # payroll/routes/payroll_routes.py
 from __future__ import annotations
 
@@ -14,9 +19,15 @@ from flask import Blueprint, Response, jsonify, request
 
 from payroll.engine import run_payroll
 
-# IMPORTANT: this is the import that was breaking Render when missing/misnamed.
-# This MUST match the file: billing/subscription_gate.py
-from billing.subscription_gate import require_active_subscription
+# IMPORTANT: subscription gate import must match where the billing package lives in the repo.
+# This handles BOTH layouts safely:
+#  - billing/subscription_gate.py
+#  - freightpay/billing/subscription_gate.py
+try:
+    from billing.subscription_gate import require_active_subscription
+except ModuleNotFoundError:
+    from freightpay.billing.subscription_gate import require_active_subscription  # type: ignore
+
 
 # ✅ Unique blueprint name (prevents "already registered" errors)
 payroll_bp = Blueprint("payroll_api_v1", __name__, url_prefix="/payroll")
