@@ -3,16 +3,17 @@ from __future__ import annotations
 
 import os
 import sys
-
 from flask import Flask, jsonify
 
 # ===== PATH FIX (PRODUCTION) =====
-# Render runs from: /opt/render/project/src
-# billing/, payroll/, etc. are inside the same /src directory.
-SRC_DIR = os.path.dirname(os.path.abspath(__file__))
-if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR)
-# ================================
+# app.py is located in /opt/render/project/src
+# billing/, payroll/, etc. are also in /opt/render/project/src
+
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+# =================================
+
 
 from payroll.routes.payroll_routes import payroll_bp
 
