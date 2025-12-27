@@ -21,7 +21,7 @@ from payroll.engine import run_payroll
 try:
     from billing.subscription_gate import require_active_subscription
 except ModuleNotFoundError:
-    from billing.subscription_gate import require_active_subscription  # type: ignore
+    
 
 
 # ✅ Unique blueprint name (prevents "already registered" errors)
