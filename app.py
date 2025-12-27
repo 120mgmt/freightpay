@@ -1,37 +1,32 @@
+# app.py
+from __future__ import annotations
+
 import os
-import sys
 from flask import Flask, jsonify
-from flask_migrate import Migrate
-from flask_jwt_extended import JWTManager
 
-# Ensure /src is on the import path
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SRC_DIR = os.path.join(BASE_DIR, "src")
-if SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR)
-
-from config import Config
-from models import db
-from auth.routes import auth_bp
+# Blueprints
 from payroll.routes.payroll_routes import payroll_bp
 
 
-def create_app():
+def create_app() -> Flask:
     app = Flask(__name__)
-    app.config.from_object(Config)
 
-    db.init_app(app)
-    Migrate(app, db)
-    JWTManager(app)
+    # Core config
+    app.config["JSON_SORT_KEYS"] = False
 
-    @app.get("/health")
+    # Health check
+    @app.route("/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok"}), 200
 
-    app.register_blueprint(auth_bp)
+    # Register blueprints
     app.register_blueprint(payroll_bp)
 
     return app
 
 
 app = create_app()
+
+if __name__ == "__main__":
+    port = int(os.getenv("PORT", "5000"))
+    app.run(host="0.0.0.0", port=port)
