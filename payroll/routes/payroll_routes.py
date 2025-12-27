@@ -18,7 +18,7 @@ from payroll.engine import run_payroll
 # This handles BOTH layouts safely:
 #  - billing/subscription_gate.py
 #  - billing/subscription_gate.py
-    from billing.subscription_gate import require_active_subscription
+from billing.subscription_gate import require_active_subscription
 
     
 
