@@ -3,34 +3,38 @@ from __future__ import annotations
 
 import os
 from functools import wraps
-from typing import Any, Callable
+from typing import Callable, Any
 
 from flask import jsonify, request
 
 
-def _truthy(value: str | None) -> bool:
-    return (value or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+def _truthy(v: str | None) -> bool:
+    return (v or "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _subscription_required_enabled() -> bool:
-    # Default OFF unless explicitly enabled
+    # OFF by default unless explicitly enabled
     return _truthy(os.getenv("SUBSCRIPTION_REQUIRED", "0"))
 
 
 def _bypass_enabled() -> bool:
-    # Default ON for dev/local, OFF otherwise
+    # ON in dev/local, OFF otherwise unless explicitly set
     env = (os.getenv("FLASK_ENV") or os.getenv("ENV") or "").lower()
     default = "1" if env in {"dev", "development", "local"} else "0"
     return _truthy(os.getenv("SUBSCRIPTION_BYPASS", default))
 
 
-def require_active_subscription(fn: Callable[..., Any]):
+def require_active_subscription(fn: Callable[..., Any]) -> Callable[..., Any]:
     """
-    Decorator to gate routes behind an active subscription.
-    SAFE DEFAULTS:
-      - Disabled unless SUBSCRIPTION_REQUIRED=1
-      - Bypassed in dev/local unless explicitly disabled
+    Decorator to gate endpoints behind an active subscription.
+
+    Behavior:
+    - If SUBSCRIPTION_REQUIRED=0 → allow
+    - If SUBSCRIPTION_BYPASS=1 → allow
+    - Otherwise → require header X-Subscription-Active=true
+      (placeholder until Stripe webhooks / customer lookup is wired)
     """
+
     @wraps(fn)
     def wrapper(*args, **kwargs):
         if not _subscription_required_enabled():
@@ -39,21 +43,22 @@ def require_active_subscription(fn: Callable[..., Any]):
         if _bypass_enabled():
             return fn(*args, **kwargs)
 
-        # Placeholder enforcement logic (Stripe / billing provider later)
-        # Expect header or context indicating active subscription
-        is_active = request.headers.get("X-Subscription-Active")
+        # Placeholder enforcement until Stripe customer lookup is wired
+        header_val = request.headers.get("X-Subscription-Active")
+        if _truthy(header_val):
+            return fn(*args, **kwargs)
 
-        if not _truthy(is_active):
-            return (
-                jsonify(
-                    {
-                        "error": "subscription_required",
-                        "message": "Active subscription required to access this resource.",
-                    }
-                ),
-                402,
-            )
-
-        return fn(*args, **kwargs)
+        return (
+            jsonify(
+                {
+                    "error": "Active subscription required",
+                    "code": "SUBSCRIPTION_REQUIRED",
+                }
+            ),
+            402,
+        )
 
     return wrapper
+
+
+__all__ = ["require_active_subscription"]
