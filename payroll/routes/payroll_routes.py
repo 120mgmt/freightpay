@@ -18,9 +18,8 @@ from payroll.engine import run_payroll
 # This handles BOTH layouts safely:
 #  - billing/subscription_gate.py
 #  - billing/subscription_gate.py
-try:
     from billing.subscription_gate import require_active_subscription
-except ModuleNotFoundError:
+
     
 
 
