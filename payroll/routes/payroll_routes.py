@@ -1,39 +1,42 @@
 # payroll/routes/payroll_routes.py
-import os
-import json
-import uuid
-import sqlite3
-from datetime import datetime, timezone
+from __future__ import annotations
 
-from flask import Blueprint, request, jsonify, Response
+import csv
+import io
+import json
+import os
+import sqlite3
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
+
+from flask import Blueprint, Response, jsonify, request
 
 from payroll.engine import run_payroll
-from payroll.export_csv import settlements_to_csv
+
+# IMPORTANT: this is the import that was breaking Render when missing/misnamed.
+# This MUST match the file: billing/subscription_gate.py
+from billing.subscription_gate import require_active_subscription
 
 # ✅ Unique blueprint name (prevents "already registered" errors)
 payroll_bp = Blueprint("payroll_api_v1", __name__, url_prefix="/payroll")
 
 # ✅ Zero-new-deps persistence (SQLite)
+# Render filesystem is ephemeral; /tmp works for runtime persistence between requests.
 DB_PATH = os.getenv("PAYROLL_DB_PATH", "/tmp/payroll.db")
 
 
-def _db():
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _db() -> sqlite3.Connection:
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
 
-def _ensure_column(conn: sqlite3.Connection, table: str, col: str, col_def: str) -> None:
-    # Adds column if missing (safe no-op if already exists)
-    try:
-        conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {col_def}")
-        conn.commit()
-    except sqlite3.OperationalError:
-        # column already exists OR sqlite doesn't allow alter in some edge cases
-        pass
-
-
-def _init_db():
+def _init_db() -> None:
     conn = _db()
     try:
         conn.execute(
@@ -41,20 +44,15 @@ def _init_db():
             CREATE TABLE IF NOT EXISTS payroll_runs (
                 run_id TEXT PRIMARY KEY,
                 created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                status TEXT NOT NULL,
+                finalized_at TEXT,
                 payload_json TEXT NOT NULL,
-                results_json TEXT NOT NULL,
-                status TEXT NOT NULL DEFAULT 'created',
-                finalized INTEGER NOT NULL DEFAULT 0,
-                finalized_at TEXT
+                results_json TEXT NOT NULL
             )
             """
         )
         conn.commit()
-
-        # Backward compatible upgrades if table existed before
-        _ensure_column(conn, "payroll_runs", "status", "TEXT NOT NULL DEFAULT 'created'")
-        _ensure_column(conn, "payroll_runs", "finalized", "INTEGER NOT NULL DEFAULT 0")
-        _ensure_column(conn, "payroll_runs", "finalized_at", "TEXT")
     finally:
         conn.close()
 
@@ -62,13 +60,173 @@ def _init_db():
 _init_db()
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
+def _write_run(
+    *,
+    run_id: str,
+    status: str,
+    payload: Dict[str, Any],
+    results: Dict[str, Any],
+    finalized_at: Optional[str] = None,
+) -> None:
+    created_at = _utc_now_iso()
+    updated_at = created_at
+
+    conn = _db()
+    try:
+        conn.execute(
+            """
+            INSERT INTO payroll_runs (run_id, created_at, updated_at, status, finalized_at, payload_json, results_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                run_id,
+                created_at,
+                updated_at,
+                status,
+                finalized_at,
+                json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
+                json.dumps(results, separators=(",", ":"), ensure_ascii=False),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _update_run(
+    *,
+    run_id: str,
+    status: Optional[str] = None,
+    results: Optional[Dict[str, Any]] = None,
+    finalized_at: Optional[str] = None,
+) -> bool:
+    fields: List[str] = ["updated_at = ?"]
+    params: List[Any] = [_utc_now_iso()]
+
+    if status is not None:
+        fields.append("status = ?")
+        params.append(status)
+
+    if finalized_at is not None:
+        fields.append("finalized_at = ?")
+        params.append(finalized_at)
+
+    if results is not None:
+        fields.append("results_json = ?")
+        params.append(json.dumps(results, separators=(",", ":"), ensure_ascii=False))
+
+    params.append(run_id)
+
+    conn = _db()
+    try:
+        cur = conn.execute(
+            f"UPDATE payroll_runs SET {', '.join(fields)} WHERE run_id = ?",
+            tuple(params),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def _get_run_row(run_id: str) -> Optional[sqlite3.Row]:
+    conn = _db()
+    try:
+        row = conn.execute(
+            """
+            SELECT run_id, created_at, updated_at, status, finalized_at, payload_json, results_json
+            FROM payroll_runs
+            WHERE run_id = ?
+            """,
+            (run_id,),
+        ).fetchone()
+        return row
+    finally:
+        conn.close()
+
+
+def _row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    return {
+        "run_id": row["run_id"],
+        "created_at": row["created_at"],
+        "updated_at": row["updated_at"],
+        "status": row["status"],
+        "finalized_at": row["finalized_at"],
+        "payload": json.loads(row["payload_json"]),
+        "results": json.loads(row["results_json"]),
+    }
+
+
+def _csv_from_results(results_obj: Dict[str, Any]) -> str:
+    """
+    Accepts results object saved in DB:
+      {
+        "results": [...],
+        "totals": {...}
+      }
+    """
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    writer.writerow(
+        [
+            "contractor_id",
+            "base_gross",
+            "accessorials_total",
+            "deductions_total",
+            "gross",
+            "net",
+        ]
+    )
+
+    rows = results_obj.get("results") or []
+    if isinstance(rows, dict) and "results" in rows:
+        rows = rows.get("results") or []
+
+    if not isinstance(rows, list):
+        rows = []
+
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+
+        base_gross = r.get("base_gross", 0)
+        gross = r.get("gross", 0)
+        net = r.get("net", 0)
+
+        access = r.get("accessorials") or {}
+        deductions = r.get("deductions") or {}
+
+        access_total = 0
+        deductions_total = 0
+
+        if isinstance(access, dict):
+            access_total = access.get("total", 0)
+        if isinstance(deductions, dict):
+            deductions_total = deductions.get("total", 0)
+
+        writer.writerow(
+            [
+                r.get("contractor_id", ""),
+                base_gross,
+                access_total,
+                deductions_total,
+                gross,
+                net,
+            ]
+        )
+
+    return output.getvalue()
 
 
 @payroll_bp.route("/run", methods=["POST"])
-def payroll_run():
-    # Expect JSON body: { "contractors": [ ... ] }
+@require_active_subscription
+def payroll_run() -> Tuple[Response, int]:
+    """
+    POST /payroll/run
+    Body: { "contractors": [ ... ] }
+    Persists run + returns run_id + results
+    """
     payload = request.get_json(silent=True)
     if not isinstance(payload, dict):
         return jsonify({"error": "Invalid JSON body. Send application/json."}), 400
@@ -81,71 +239,29 @@ def payroll_run():
     results = run_payroll(payload)
 
     run_id = str(uuid.uuid4())
-    created_at = _utc_now_iso()
+    _write_run(
+        run_id=run_id,
+        status="computed",
+        payload=payload,
+        results=results,
+        finalized_at=None,
+    )
 
-    # Persist payload + results
-    conn = _db()
-    try:
-        conn.execute(
-            """
-            INSERT INTO payroll_runs (run_id, created_at, payload_json, results_json, status, finalized, finalized_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                run_id,
-                created_at,
-                json.dumps(payload, separators=(",", ":"), ensure_ascii=False),
-                json.dumps(results, separators=(",", ":"), ensure_ascii=False),
-                "calculated",
-                0,
-                None,
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    return jsonify(
-        {
-            "run_id": run_id,
-            "created_at": created_at,
-            "status": "calculated",
-            "finalized": False,
-            "results": results,
-        }
-    ), 200
+    return jsonify({"run_id": run_id, "status": "computed", "results": results}), 200
 
 
 @payroll_bp.route("/runs/<run_id>", methods=["GET"])
-def payroll_get_run(run_id: str):
-    conn = _db()
-    try:
-        row = conn.execute(
-            "SELECT run_id, created_at, payload_json, results_json, status, finalized, finalized_at "
-            "FROM payroll_runs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-    finally:
-        conn.close()
-
+@require_active_subscription
+def payroll_get_run(run_id: str) -> Tuple[Response, int]:
+    row = _get_run_row(run_id)
     if not row:
         return jsonify({"error": "Run not found"}), 404
-
-    return jsonify(
-        {
-            "run_id": row["run_id"],
-            "created_at": row["created_at"],
-            "status": row["status"],
-            "finalized": bool(row["finalized"]),
-            "finalized_at": row["finalized_at"],
-            "payload": json.loads(row["payload_json"]),
-            "results": json.loads(row["results_json"]),
-        }
-    ), 200
+    return jsonify(_row_to_dict(row)), 200
 
 
 @payroll_bp.route("/runs", methods=["GET"])
-def payroll_list_runs():
+@require_active_subscription
+def payroll_list_runs() -> Tuple[Response, int]:
     limit = request.args.get("limit", "20")
     try:
         limit_i = max(1, min(200, int(limit)))
@@ -155,102 +271,90 @@ def payroll_list_runs():
     conn = _db()
     try:
         rows = conn.execute(
-            "SELECT run_id, created_at, status, finalized FROM payroll_runs "
-            "ORDER BY created_at DESC LIMIT ?",
+            """
+            SELECT run_id, created_at, updated_at, status, finalized_at
+            FROM payroll_runs
+            ORDER BY created_at DESC
+            LIMIT ?
+            """,
             (limit_i,),
         ).fetchall()
     finally:
         conn.close()
 
-    return jsonify(
-        {
-            "runs": [
-                {
-                    "run_id": r["run_id"],
-                    "created_at": r["created_at"],
-                    "status": r["status"],
-                    "finalized": bool(r["finalized"]),
-                }
-                for r in rows
-            ]
-        }
-    ), 200
+    return (
+        jsonify(
+            {
+                "runs": [
+                    {
+                        "run_id": r["run_id"],
+                        "created_at": r["created_at"],
+                        "updated_at": r["updated_at"],
+                        "status": r["status"],
+                        "finalized_at": r["finalized_at"],
+                    }
+                    for r in rows
+                ]
+            }
+        ),
+        200,
+    )
 
 
 @payroll_bp.route("/runs/<run_id>/status", methods=["GET"])
-def payroll_run_status(run_id: str):
-    conn = _db()
-    try:
-        row = conn.execute(
-            "SELECT run_id, status, finalized, finalized_at FROM payroll_runs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-    finally:
-        conn.close()
-
+@require_active_subscription
+def payroll_run_status(run_id: str) -> Tuple[Response, int]:
+    row = _get_run_row(run_id)
     if not row:
         return jsonify({"error": "Run not found"}), 404
 
-    return jsonify(
-        {
-            "run_id": row["run_id"],
-            "status": row["status"],
-            "finalized": bool(row["finalized"]),
-            "finalized_at": row["finalized_at"],
-        }
-    ), 200
+    return (
+        jsonify(
+            {
+                "run_id": row["run_id"],
+                "status": row["status"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "finalized_at": row["finalized_at"],
+            }
+        ),
+        200,
+    )
 
 
 @payroll_bp.route("/runs/<run_id>/finalize", methods=["POST"])
-def payroll_finalize_run(run_id: str):
-    conn = _db()
-    try:
-        row = conn.execute(
-            "SELECT run_id, finalized FROM payroll_runs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
+@require_active_subscription
+def payroll_finalize(run_id: str) -> Tuple[Response, int]:
+    row = _get_run_row(run_id)
+    if not row:
+        return jsonify({"error": "Run not found"}), 404
 
-        if not row:
-            return jsonify({"error": "Run not found"}), 404
+    if row["status"] == "finalized":
+        return jsonify({"run_id": run_id, "status": "finalized", "finalized_at": row["finalized_at"]}), 200
 
-        if bool(row["finalized"]):
-            return jsonify({"run_id": run_id, "finalized": True}), 200
+    finalized_at = _utc_now_iso()
+    ok = _update_run(run_id=run_id, status="finalized", finalized_at=finalized_at)
+    if not ok:
+        return jsonify({"error": "Failed to finalize run"}), 500
 
-        finalized_at = _utc_now_iso()
-        conn.execute(
-            "UPDATE payroll_runs SET finalized = 1, finalized_at = ?, status = ? WHERE run_id = ?",
-            (finalized_at, "finalized", run_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    return jsonify({"run_id": run_id, "finalized": True, "finalized_at": finalized_at}), 200
+    return jsonify({"run_id": run_id, "status": "finalized", "finalized_at": finalized_at}), 200
 
 
 @payroll_bp.route("/runs/<run_id>/export.csv", methods=["GET"])
-def payroll_export_csv(run_id: str):
-    conn = _db()
-    try:
-        row = conn.execute(
-            "SELECT results_json FROM payroll_runs WHERE run_id = ?",
-            (run_id,),
-        ).fetchone()
-    finally:
-        conn.close()
-
+@require_active_subscription
+def payroll_export_csv(run_id: str) -> Tuple[Response, int]:
+    row = _get_run_row(run_id)
     if not row:
         return jsonify({"error": "Run not found"}), 404
 
     results_obj = json.loads(row["results_json"])
-    results_list = results_obj.get("results", [])
-    csv_data = settlements_to_csv(results_list)
+    csv_text = _csv_from_results(results_obj)
 
-    return Response(
-        csv_data,
-        mimetype="text/csv",
-        headers={"Content-Disposition": f'attachment; filename="payroll_{run_id}.csv"'},
+    return (
+        Response(
+            csv_text,
+            mimetype="text/csv",
+            headers={"Content-Disposition": f'attachment; filename="payroll_run_{run_id}.csv"'},
+        ),
+        200,
     )
-
-
-    
