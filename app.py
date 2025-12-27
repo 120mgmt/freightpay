@@ -1,7 +1,11 @@
 # app.py
 from __future__ import annotations
+import sys, os
 
-import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.join(BASE_DIR, "src")
+sys.path.insert(0, SRC_DIR)
+
 from flask import Flask, jsonify
 
 # Blueprints
