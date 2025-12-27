@@ -5,19 +5,18 @@ import os
 import sys
 from flask import Flask, jsonify
 
-# Ensure imports work in Render regardless of working directory
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-SRC_DIR = os.path.join(BASE_DIR, "src")
+# ===== PATH FIX (THIS IS THE FIX) =====
+# app.py lives in /opt/render/project/src
+# billing/, payroll/, etc live in /opt/render/project
+SRC_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SRC_DIR)
 
-# Put BASE_DIR first so top-level packages like /billing and /payroll resolve
-if BASE_DIR not in sys.path:
-    sys.path.insert(0, BASE_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
-# If a /src folder exists, include it too (safe/no harm if unused)
-if os.path.isdir(SRC_DIR) and SRC_DIR not in sys.path:
-    sys.path.insert(0, SRC_DIR)
+# =====================================
 
-# Blueprints
+
 from payroll.routes.payroll_routes import payroll_bp
 
 
