@@ -2,35 +2,33 @@
 from __future__ import annotations
 
 import os
-import sys
 from flask import Flask, jsonify
 
-# ===== PATH FIX (PRODUCTION) =====
-# app.py is located in /opt/render/project/src
-# billing/, payroll/, etc. are also in /opt/render/project/src
-
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
-if PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, PROJECT_ROOT)
-# =================================
-
-
+# Import blueprints AFTER app context is valid
 from payroll.routes.payroll_routes import payroll_bp
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
+
+    # ---- Core Config ----
     app.config["JSON_SORT_KEYS"] = False
 
+    # ---- Health Check ----
     @app.route("/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok"}), 200
 
+    # ---- Register Blueprints ----
     app.register_blueprint(payroll_bp)
+
     return app
 
 
+# Gunicorn entrypoint
 app = create_app()
+
+# Local dev only (Render ignores this)
 
 if __name__ == "__main__":
     port = int(os.getenv("PORT", "5000"))
