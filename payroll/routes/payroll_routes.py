@@ -1,8 +1,3 @@
-
-Ashley Ross <info@120mgmt.com>
-9:48 PM (0 minutes ago)
-to me
-
 # payroll/routes/payroll_routes.py
 from __future__ import annotations
 
