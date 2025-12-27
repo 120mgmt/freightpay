@@ -17,11 +17,11 @@ from payroll.engine import run_payroll
 # IMPORTANT: subscription gate import must match where the billing package lives in the repo.
 # This handles BOTH layouts safely:
 #  - billing/subscription_gate.py
-#  - freightpay/billing/subscription_gate.py
+#  - billing/subscription_gate.py
 try:
     from billing.subscription_gate import require_active_subscription
 except ModuleNotFoundError:
-    from freightpay.billing.subscription_gate import require_active_subscription  # type: ignore
+    from billing.subscription_gate import require_active_subscription  # type: ignore
 
 
 # ✅ Unique blueprint name (prevents "already registered" errors)
