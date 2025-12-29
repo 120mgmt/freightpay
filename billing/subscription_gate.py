@@ -9,7 +9,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, cast
 
 from flask import jsonify, request
 
-from billing.entitlements import (
+from billing.entitlement import (
     Entitlements,
     entitlements_from_stripe_price_id,
     entitlements_to_dict,
