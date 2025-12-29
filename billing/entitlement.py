@@ -1,20 +1,16 @@
 # File: billing/entitlement.py
-# Language: Python
-# Purpose: Centralized entitlement & feature-access control
-# Import-safe, production-ready, no side effects on import
+# Purpose: Centralized entitlement, feature access, and subscription gating
+# Import-safe, production-ready
 
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from typing import Dict, Optional, Set
-
+from typing import Dict, Set, Optional
 from flask import request
 
-# =============================
+# =========================
 # Environment helpers
-# =============================
-
+# =========================
 
 def _env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
@@ -26,24 +22,18 @@ def _truthy(val: Optional[str]) -> bool:
     return val.lower() in {"1", "true", "yes", "y", "on"}
 
 
-# =============================
+# =========================
 # Master switches
-# =============================
+# =========================
 
-# When disabled, everything is allowed (safe default so gating never blocks prod by mistake)
 ENTITLEMENTS_ENABLED = _truthy(_env("ENTITLEMENTS_ENABLED", "1"))
-
-# Emergency bypass: when enabled, everything is allowed even if ENTITLEMENTS_ENABLED=1
 ENTITLEMENTS_BYPASS = _truthy(_env("ENTITLEMENTS_BYPASS", "0"))
 
-# Default plan when no plan is known (safe: minimal access)
 DEFAULT_PLAN = _env("CUSTOMER_PLAN_DEFAULT", "free")
 
-# =============================
-# Plan -> feature map
-# =============================
-# Convention: "*" means all features allowed.
-# Add/remove features here as your product grows.
+# =========================
+# Plan → feature map
+# =========================
 
 PLAN_ENTITLEMENTS: Dict[str, Set[str]] = {
     "free": {
@@ -61,111 +51,33 @@ PLAN_ENTITLEMENTS: Dict[str, Set[str]] = {
     },
 }
 
-# =============================
-# Stripe Price ID -> plan map
-# =============================
-# These env vars should be set to your Stripe recurring Price IDs.
-# Example:
-#   STRIPE_PRICE_ID_STARTER=price_123
-#   STRIPE_PRICE_ID_PRO=price_456
-#   STRIPE_PRICE_ID_ENTERPRISE=price_789
-
-PRICE_ID_TO_PLAN: Dict[str, str] = {
-    _env("STRIPE_PRICE_ID_STARTER", ""): "starter",
-    _env("STRIPE_PRICE_ID_PRO", ""): "pro",
-    _env("STRIPE_PRICE_ID_ENTERPRISE", ""): "enterprise",
-}
-
-# Remove empty keys to avoid accidental matches on ""
-PRICE_ID_TO_PLAN = {k: v for k, v in PRICE_ID_TO_PLAN.items() if k}
-
-
-# =============================
-# Request context helpers
-# =============================
-
+# =========================
+# Request helpers
+# =========================
 
 def _get_customer_id() -> Optional[str]:
-    """
-    Best-effort extraction of customer_id from request context.
-    - Header: X-Customer-Id
-    - Query:  ?customer_id=...
-    - JSON:   {"customer_id": "..."}
-    """
-    try:
-        hdr = request.headers.get("X-Customer-Id")
-        if isinstance(hdr, str) and hdr.strip():
-            return hdr.strip()
-    except Exception:
-        pass
+    cid = request.headers.get("X-Customer-Id")
+    if isinstance(cid, str):
+        return cid
 
-    try:
-        q = request.args.get("customer_id")
-        if isinstance(q, str) and q.strip():
-            return q.strip()
-    except Exception:
-        pass
-
-    try:
-        data = request.get_json(silent=True) or {}
-        cid = data.get("customer_id")
-        if isinstance(cid, str) and cid.strip():
-            return cid.strip()
-    except Exception:
-        pass
+    data = request.get_json(silent=True) or {}
+    cid = data.get("customer_id")
+    if isinstance(cid, str):
+        return cid
 
     return None
 
 
-# =============================
-# Public API (used by subscription_gate / routes)
-# =============================
-
-
 def _get_customer_plan(customer_id: str) -> str:
-    """
-    Production hook.
-
-    Replace with Stripe/DB lookup when you have persistent customer records.
-
-    For now:
-      - CUSTOMER_PLAN_DEFAULT controls the plan used by entitlement checks.
-    """
-    # Intentionally does NOT call Stripe here to keep imports side-effect free
-    # and to avoid network calls during app boot.
+    # Production hook: replace with Stripe / DB lookup
     return _env("CUSTOMER_PLAN_DEFAULT", DEFAULT_PLAN)
 
 
-def entitlements_from_stripe_price_id(price_id: Optional[str]) -> Set[str]:
-    """
-    Returns the entitlement set implied by a Stripe recurring Price ID.
-    Used by subscription_gate when translating Stripe subscription items -> entitlements.
-    """
-    if not price_id:
-        return set()
-
-    plan = PRICE_ID_TO_PLAN.get(price_id, "")
-    if not plan:
-        # Unknown price id -> no entitlements (safe)
-        return set()
-
-    return set(PLAN_ENTITLEMENTS.get(plan, set()))
-
-
-def entitlements_to_dict(entitlements: Set[str]) -> Dict[str, object]:
-    """
-    Normalizes entitlement set into a JSON-safe dict.
-    """
-    return {
-        "features": sorted(entitlements),
-        "all": ("*" in entitlements),
-    }
-
+# =========================
+# Public API (USED BY subscription_gate.py)
+# =========================
 
 def has_entitlement(feature: str, customer_id: Optional[str] = None) -> bool:
-    """
-    Core entitlement check.
-    """
     if not ENTITLEMENTS_ENABLED:
         return True
 
@@ -176,7 +88,6 @@ def has_entitlement(feature: str, customer_id: Optional[str] = None) -> bool:
         customer_id = _get_customer_id()
 
     if not customer_id:
-        # No customer context -> deny when entitlements are enabled (secure default)
         return False
 
     plan = _get_customer_plan(customer_id)
@@ -189,36 +100,51 @@ def has_entitlement(feature: str, customer_id: Optional[str] = None) -> bool:
 
 
 def feature_enabled(feature: str, customer_id: Optional[str] = None) -> bool:
-    """
-    Backward-compatible alias for other modules that expect `feature_enabled`.
-    """
     return has_entitlement(feature, customer_id)
 
 
-# Optional convenience object (safe, lightweight)
+def subscription_required_enabled() -> bool:
+    return ENTITLEMENTS_ENABLED and not ENTITLEMENTS_BYPASS
 
 
-@dataclass(frozen=True)
-class Entitlements:
-    plan: str
-    features: Set[str]
+def entitlements_from_stripe_price_id(price_id: Optional[str]) -> Set[str]:
+    if not price_id:
+        return set()
 
-    def allows(self, feature: str) -> bool:
-        if "*" in self.features:
-            return True
-        return feature in self.features
+    mapping = {
+        "price_free": PLAN_ENTITLEMENTS["free"],
+        "price_starter": PLAN_ENTITLEMENTS["starter"],
+        "price_pro": PLAN_ENTITLEMENTS["pro"],
+        "price_enterprise": PLAN_ENTITLEMENTS["enterprise"],
+    }
 
-    def to_dict(self) -> Dict[str, object]:
-        return entitlements_to_dict(self.features)
+    return mapping.get(price_id, set())
 
 
-__all__ = [
-    "ENTITLEMENTS_ENABLED",
-    "ENTITLEMENTS_BYPASS",
-    "PLAN_ENTITLEMENTS",
-    "Entitlements",
-    "entitlements_from_stripe_price_id",
-    "entitlements_to_dict",
-    "feature_enabled",
-    "has_entitlement",
-]
+def entitlements_to_dict(plan: Optional[str] = None) -> Dict[str, bool]:
+    if not plan:
+        plan = DEFAULT_PLAN
+
+    allowed = PLAN_ENTITLEMENTS.get(plan, set())
+
+    if "*" in allowed:
+        return {"*": True}
+
+    return {feature: True for feature in allowed}
+
+
+# =========================
+# Minimal self-test
+# =========================
+
+if __name__ == "__main__":
+    os.environ["ENTITLEMENTS_ENABLED"] = "1"
+    os.environ["ENTITLEMENTS_BYPASS"] = "0"
+    os.environ["CUSTOMER_PLAN_DEFAULT"] = "pro"
+
+    assert subscription_required_enabled() is True
+    assert feature_enabled("dashboard:view", "x") is True
+    assert feature_enabled("billing:portal", "x") is True
+    assert feature_enabled("admin:users", "x") is True
+
+    print("entitlement.py OK")
