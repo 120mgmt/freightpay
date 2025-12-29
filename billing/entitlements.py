@@ -1,134 +1,133 @@
-# File: billing/entitlements.py
+# File: billing/entitlement.py
+# Language: Python
+# Purpose: Centralized entitlement & feature-access control
+# Import-safe, production-ready, no side effects on import
+
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Dict, Set
+
+from flask import request
+
+# ================================
+# Environment helpers
+# ================================
+
+def _env(name: str, default: str = "") -> str:
+    return os.getenv(name, default).strip()
 
 
-@dataclass(frozen=True)
-class Entitlements:
-    plan: str
-    features: Dict[str, bool]
-    limits: Dict[str, int]
+def _truthy(val: str | None) -> bool:
+    if not val:
+        return False
+    return val.lower() in {"1", "true", "yes", "y", "on"}
 
 
-# Default feature flags (safe baseline)
-DEFAULT_FEATURES: Dict[str, bool] = {
-    "payroll": True,
-    "payroll_run": True,
-    "contractor_pay": True,
-    "miles_pay": True,
-    "deductions": True,
-    "export_csv": True,
-    "quickbooks_export": True,
-    "stripe_billing": True,
-    "customer_portal": True,
-    "webhooks": True,
-}
+# ================================
+# Entitlement configuration
+# ================================
 
-DEFAULT_LIMITS: Dict[str, int] = {
-    "drivers": 25,
-    "payroll_runs_per_month": 8,
-    "exports_per_month": 50,
-}
+# Master switches
+ENTITLEMENTS_ENABLED = _truthy(_env("ENTITLEMENTS_ENABLED", "1"))
+ENTITLEMENTS_BYPASS = _truthy(_env("ENTITLEMENTS_BYPASS", "0"))
 
-
-# Plan overrides (edit freely)
-PLAN_DEFINITIONS: Dict[str, Dict[str, Any]] = {
+# Plan → allowed features
+PLAN_ENTITLEMENTS: Dict[str, Set[str]] = {
     "free": {
-        "features": {**DEFAULT_FEATURES, "payroll_run": False},
-        "limits": {**DEFAULT_LIMITS, "drivers": 3, "payroll_runs_per_month": 0, "exports_per_month": 5},
+        "dashboard:view",
     },
     "starter": {
-        "features": {**DEFAULT_FEATURES},
-        "limits": {**DEFAULT_LIMITS, "drivers": 10, "payroll_runs_per_month": 2},
+        "dashboard:view",
+        "payroll:run",
+        "payroll:export",
     },
     "pro": {
-        "features": {**DEFAULT_FEATURES},
-        "limits": {**DEFAULT_LIMITS, "drivers": 50, "payroll_runs_per_month": 12, "exports_per_month": 200},
+        "dashboard:view",
+        "payroll:run",
+        "payroll:export",
+        "payroll:history",
+        "billing:customers",
+        "billing:portal",
     },
     "enterprise": {
-        "features": {**DEFAULT_FEATURES},
-        "limits": {**DEFAULT_LIMITS, "drivers": 1000, "payroll_runs_per_month": 1000, "exports_per_month": 10000},
+        "*",  # full access
     },
 }
 
-
-def _truthy(v: str | None) -> bool:
-    return (v or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+DEFAULT_PLAN = "free"
 
 
-def _get_default_plan() -> str:
-    return (os.getenv("DEFAULT_PLAN") or "starter").strip().lower() or "starter"
+# ================================
+# Request context helpers
+# ================================
+
+def _get_customer_id() -> str | None:
+    cid = request.headers.get("X-Customer-Id")
+    if cid:
+        return cid
+
+    cid = request.args.get("customer_id")
+    if cid:
+        return cid
+
+    data = request.get_json(silent=True) or {}
+    cid = data.get("customer_id")
+    if isinstance(cid, str):
+        return cid
+
+    return None
 
 
-def _plan_from_env_override() -> Optional[str]:
-    p = (os.getenv("PLAN_OVERRIDE") or "").strip().lower()
-    return p or None
-
-
-def _normalize_plan(plan: str) -> str:
-    plan = (plan or "").strip().lower()
-    if plan in PLAN_DEFINITIONS:
-        return plan
-    return _get_default_plan()
-
-
-def entitlements_for_plan(plan: str) -> Entitlements:
-    plan = _normalize_plan(plan)
-    cfg = PLAN_DEFINITIONS.get(plan, PLAN_DEFINITIONS[_get_default_plan()])
-    return Entitlements(plan=plan, features=dict(cfg["features"]), limits=dict(cfg["limits"]))
-
-
-def entitlements_from_stripe_price_id(price_id: str | None) -> Entitlements:
+def _get_customer_plan(customer_id: str) -> str:
     """
-    Map Stripe Price IDs to plans.
-    Set these env vars to match your Stripe Price IDs:
-      PRICE_FREE, PRICE_STARTER, PRICE_PRO, PRICE_ENTERPRISE
+    Production hook.
+    Replace with Stripe / DB lookup.
+
+    REQUIRED ENV VAR FOR NOW:
+      CUSTOMER_PLAN_DEFAULT=free|starter|pro|enterprise
     """
-    override = _plan_from_env_override()
-    if override:
-        return entitlements_for_plan(override)
-
-    pid = (price_id or "").strip()
-    if not pid:
-        return entitlements_for_plan(_get_default_plan())
-
-    mapping = {
-        (os.getenv("PRICE_FREE") or "").strip(): "free",
-        (os.getenv("PRICE_STARTER") or "").strip(): "starter",
-        (os.getenv("PRICE_PRO") or "").strip(): "pro",
-        (os.getenv("PRICE_ENTERPRISE") or "").strip(): "enterprise",
-    }
-    plan = mapping.get(pid) or _get_default_plan()
-    return entitlements_for_plan(plan)
+    return _env("CUSTOMER_PLAN_DEFAULT", DEFAULT_PLAN)
 
 
-def merge_entitlements(base: Entitlements, add_features: Optional[Dict[str, bool]] = None, add_limits: Optional[Dict[str, int]] = None) -> Entitlements:
-    features = dict(base.features)
-    limits = dict(base.limits)
-    if add_features:
-        features.update({k: bool(v) for k, v in add_features.items()})
-    if add_limits:
-        limits.update({k: int(v) for k, v in add_limits.items()})
-    return Entitlements(plan=base.plan, features=features, limits=limits)
+# ================================
+# Entitlement evaluation
+# ================================
+
+def has_entitlement(feature: str, customer_id: str | None = None) -> bool:
+    if not ENTITLEMENTS_ENABLED:
+        return True
+
+    if ENTITLEMENTS_BYPASS:
+        return True
+
+    if not customer_id:
+        customer_id = _get_customer_id()
+
+    if not customer_id:
+        return False
+
+    plan = _get_customer_plan(customer_id)
+    allowed = PLAN_ENTITLEMENTS.get(plan, set())
+
+    if "*" in allowed:
+        return True
+
+    return feature in allowed
 
 
-def feature_enabled(ent: Entitlements, feature: str) -> bool:
-    return bool(ent.features.get(feature, False))
+# ================================
+# Minimal self-test (safe on import)
+# ================================
 
+if __name__ == "__main__":
+    os.environ["ENTITLEMENTS_ENABLED"] = "1"
+    os.environ["ENTITLEMENTS_BYPASS"] = "0"
+    os.environ["CUSTOMER_PLAN_DEFAULT"] = "pro"
 
-def limit_value(ent: Entitlements, key: str, default: int = 0) -> int:
-    try:
-        return int(ent.limits.get(key, default))
-    except Exception:
-        return default
+    assert has_entitlement("dashboard:view", "x") is True
+    assert has_entitlement("payroll:run", "x") is True
+    assert has_entitlement("billing:portal", "x") is True
+    assert has_entitlement("admin:users", "x") is False
 
-
-def entitlements_to_dict(ent: Entitlements) -> Dict[str, Any]:
-    return {"plan": ent.plan, "features": dict(ent.features), "limits": dict(ent.limits)}
-
-
-def subscription_required_enabled() -> bool:
-    return _truthy(os.getenv("SUBSCRIPTION_REQUIRED", "0"))
+    print("entitlement.py OK")
