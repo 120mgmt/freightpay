@@ -1,3 +1,4 @@
-# billing/__init__.py
-#package marker only. Do not import anything here>
-__all__ = []
+# File: billing/__init__.py
+frm __future__ import annotations
+
+# Billing package initializer
