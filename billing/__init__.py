@@ -1,4 +1,4 @@
 # File: billing/__init__.py
-frm __future__ import annotations
+from __future__ import annotations
 
 # Billing package initializer
