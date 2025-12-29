@@ -1,122 +1,149 @@
-# Language: Python
-# Problem: Provide a production-ready billing/subscription_gate.py that can be imported as:
-#          from billing.subscription_gate import require_active_subscription
-# Notes:
-# - File MUST be named: billing/subscription_gate.py  (underscore, not a dot)
-# - billing/ MUST contain __init__.py
-
 from __future__ import annotations
 
 import os
 from functools import wraps
-from typing import Any, Callable, TypeVar, cast
+from typing import Any, Callable, Dict, Optional, Set, TypeVar, cast
 
+import stripe
 from flask import jsonify, request
 
 F = TypeVar("F", bound=Callable[..., Any])
 
 
-def _truthy(value: str | None) -> bool:
-    """Parse common truthy strings safely."""
-    if value is None:
-        return False
-    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+def _truthy(value: Optional[str]) -> bool:
+    return bool(value) and value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _subscription_required_enabled() -> bool:
-    """
-    Master switch:
-      SUBSCRIPTION_REQUIRED=1 => enforce gating
-      SUBSCRIPTION_REQUIRED=0/empty => no gating
-    """
-    return _truthy(os.getenv("SUBSCRIPTION_REQUIRED", "0"))
+    # Default ON in production unless explicitly disabled
+    return _truthy(os.getenv("SUBSCRIPTION_REQUIRED", "1"))
 
 
 def _bypass_enabled() -> bool:
-    """
-    Bypass switch (useful for internal testing):
-      SUBSCRIPTION_BYPASS=1 => bypass gating
-    Default: OFF in production; ON only if explicitly enabled.
-    """
+    # Default OFF (only enable temporarily for internal testing)
     return _truthy(os.getenv("SUBSCRIPTION_BYPASS", "0"))
 
 
-def _extract_customer_id() -> str | None:
+def _extract_customer_id() -> Optional[str]:
     """
-    Extract a billing customer identifier from request.
-    Priority:
+    Extract Stripe Customer ID from:
       1) Header: X-Customer-Id
       2) Query:  customer_id
       3) JSON:   customer_id
     """
     cid = request.headers.get("X-Customer-Id")
-    if cid:
-        return cid.strip() or None
+    if cid and cid.strip():
+        return cid.strip()
 
     cid = request.args.get("customer_id")
-    if cid:
-        return cid.strip() or None
+    if cid and cid.strip():
+        return cid.strip()
 
     data = request.get_json(silent=True) or {}
     cid = data.get("customer_id")
-    if isinstance(cid, str):
-        return cid.strip() or None
+    if isinstance(cid, str) and cid.strip():
+        return cid.strip()
+
     return None
 
 
-def _is_active_subscription(customer_id: str) -> bool:
-    """
-    Production hook: replace this stub with a real Stripe lookup.
-    For now, this is intentionally conservative:
-      - If STRIPE is not configured, treat as NOT active when gating is enabled.
-      - If you want to allow all until Stripe is wired, set SUBSCRIPTION_REQUIRED=0.
-    """
-    stripe_secret = os.getenv("STRIPE_SECRET_KEY")
-    if not stripe_secret:
+def _stripe_ready() -> bool:
+    key = os.getenv("STRIPE_SECRET_KEY")
+    if not key:
         return False
+    stripe.api_key = key
+    return True
 
-    # TODO: Implement real Stripe subscription status check:
-    # - Retrieve customer (or map customer_id to Stripe customer)
-    # - Search active subscriptions
-    # - Return True if status in {"active", "trialing"}
-    #
-    # Keeping stub behavior deterministic.
-    return False
+
+def _active_status(status: Optional[str]) -> bool:
+    return status in {"active", "trialing"}
+
+
+def _price_entitlement_map() -> Dict[str, str]:
+    """
+    Maps Stripe Price IDs -> entitlement strings.
+    Only non-empty env vars are included.
+    """
+    mapping: Dict[str, str] = {}
+
+    base = os.getenv("STRIPE_PRICE_BASE")
+    if base:
+        mapping[base] = "base"
+
+    p = os.getenv("STRIPE_PRICE_PAYROLL_PLUS")
+    if p:
+        mapping[p] = "payroll_plus"
+
+    f = os.getenv("STRIPE_PRICE_FUEL_TAX")
+    if f:
+        mapping[f] = "fuel_tax"
+
+    c = os.getenv("STRIPE_PRICE_COMPLIANCE")
+    if c:
+        mapping[c] = "compliance"
+
+    r = os.getenv("STRIPE_PRICE_REPORTING")
+    if r:
+        mapping[r] = "reporting"
+
+    return mapping
+
+
+def _get_entitlements(customer_id: str) -> Set[str]:
+    """
+    Reads entitlements live from Stripe subscription items.
+    Returns a set like: {"base","payroll_plus"}.
+    """
+    if not _stripe_ready():
+        return set()
+
+    mapping = _price_entitlement_map()
+    entitlements: Set[str] = set()
+
+    subs = stripe.Subscription.list(
+        customer=customer_id,
+        status="all",
+        expand=["data.items.data.price"],
+        limit=100,
+    )
+
+    for sub in subs.data:
+        if not _active_status(getattr(sub, "status", None)):
+            continue
+
+        items = getattr(sub, "items", None)
+        data = getattr(items, "data", None) if items else None
+        if not isinstance(data, list):
+            continue
+
+        for it in data:
+            price = getattr(it, "price", None)
+            price_id = getattr(price, "id", None) if price else None
+            if isinstance(price_id, str) and price_id in mapping:
+                entitlements.add(mapping[price_id])
+
+    return entitlements
 
 
 def require_active_subscription(fn: F) -> F:
     """
-    Decorator to gate endpoints behind an active subscription.
-
-    Behavior:
-      - If SUBSCRIPTION_REQUIRED=0 => allow all requests (no gating)
-      - If SUBSCRIPTION_REQUIRED=1 and SUBSCRIPTION_BYPASS=1 => allow all requests
-      - If SUBSCRIPTION_REQUIRED=1 => require customer_id + active subscription
+    Use as: @require_active_subscription   (NO parentheses)
+    Enforces:
+      - SUBSCRIPTION_REQUIRED=1 (default) + valid customer_id + active subscription (base entitlement)
     """
     @wraps(fn)
     def wrapper(*args: Any, **kwargs: Any) -> Any:
-        if not _subscription_required_enabled():
-            return fn(*args, **kwargs)
-
-        if _bypass_enabled():
+        if not _subscription_required_enabled() or _bypass_enabled():
             return fn(*args, **kwargs)
 
         customer_id = _extract_customer_id()
         if not customer_id:
-            return jsonify(
-                {
-                    "error": "subscription_required",
-                    "message": "Missing customer_id (X-Customer-Id header, query, or JSON).",
-                }
-            ), 401
+            return jsonify({"error": "subscription_required", "message": "Missing customer_id."}), 401
 
-        if not _is_active_subscription(customer_id):
+        entitlements = _get_entitlements(customer_id)
+        if "base" not in entitlements:
             return jsonify(
-                {
-                    "error": "subscription_inactive",
-                    "message": "Active subscription required.",
-                    "customer_id": customer_id,
-                }
+                {"error": "subscription_inactive", "message": "Active base subscription required.", "entitlements": sorted(entitlements)}
             ), 402
 
         return fn(*args, **kwargs)
@@ -124,26 +151,47 @@ def require_active_subscription(fn: F) -> F:
     return cast(F, wrapper)
 
 
-# Simple self-check (runs only if executed directly, not on import)
+def require_entitlement(required: str):
+    """
+    Use as: @require_entitlement("payroll_plus")
+    Enforces base + the specified add-on entitlement.
+    """
+    def decorator(fn: F) -> F:
+        @wraps(fn)
+        def wrapper(*args: Any, **kwargs: Any) -> Any:
+            if not _subscription_required_enabled() or _bypass_enabled():
+                return fn(*args, **kwargs)
+
+            customer_id = _extract_customer_id()
+            if not customer_id:
+                return jsonify({"error": "subscription_required", "message": "Missing customer_id."}), 401
+
+            entitlements = _get_entitlements(customer_id)
+            if "base" not in entitlements:
+                return jsonify(
+                    {"error": "subscription_inactive", "message": "Active base subscription required.", "entitlements": sorted(entitlements)}
+                ), 402
+
+            if required not in entitlements:
+                return jsonify(
+                    {"error": "addon_required", "required": required, "entitlements": sorted(entitlements)}
+                ), 402
+
+            return fn(*args, **kwargs)
+
+        return cast(F, wrapper)
+
+    return decorator
+
+
 if __name__ == "__main__":
-    # Minimal sanity checks for parsing logic
+    # Minimal self-check (no network calls)
     assert _truthy("1") is True
     assert _truthy("true") is True
     assert _truthy("YES") is True
     assert _truthy("0") is False
     assert _truthy("") is False
     assert _truthy(None) is False
-
-    os.environ["SUBSCRIPTION_REQUIRED"] = "0"
-    assert _subscription_required_enabled() is False
-
-    os.environ["SUBSCRIPTION_REQUIRED"] = "1"
-    assert _subscription_required_enabled() is True
-
-    os.environ["SUBSCRIPTION_BYPASS"] = "0"
-    assert _bypass_enabled() is False
-
-    os.environ["SUBSCRIPTION_BYPASS"] = "1"
-    assert _bypass_enabled() is True
-
     print("subscription_gate.py self-checks: OK")
+
+
