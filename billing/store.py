@@ -1,192 +1,155 @@
+# File: billing/store.py
+# Purpose: Stripe Customer Portal + subscription status endpoints (production-ready)
+
 from __future__ import annotations
 
-import json
 import os
-import sqlite3
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional
+
+from flask import Blueprint, jsonify, request
+
+store_bp = Blueprint("store", __name__, url_prefix="/store")
 
 
-DB_PATH = os.getenv("BILLING_DB_PATH", os.getenv("DATABASE_PATH", "/tmp/app.db"))
+def _env(name: str, default: Optional[str] = None) -> Optional[str]:
+    v = os.getenv(name, default)
+    if v is None:
+        return None
+    v = v.strip()
+    return v if v else None
 
 
-def _utc_now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def _db() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
-
-
-def init_billing_db() -> None:
-    conn = _db()
+def _stripe():
     try:
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS stripe_customers (
-                company_id TEXT PRIMARY KEY,
-                stripe_customer_id TEXT NOT NULL,
-                email TEXT,
-                meta_json TEXT DEFAULT '{}',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
+        import stripe  # type: ignore
+    except Exception as e:
+        raise RuntimeError(f"Stripe not installed: {e}") from e
+
+    key = _env("STRIPE_SECRET_KEY")
+    if not key:
+        raise RuntimeError("Missing STRIPE_SECRET_KEY")
+    stripe.api_key = key
+    return stripe
+
+
+def _base_url() -> str:
+    explicit = _env("APP_BASE_URL")
+    if explicit:
+        return explicit.rstrip("/")
+    return request.host_url.rstrip("/")
+
+
+def _json_error(msg: str, status: int = 400, **extra: Any):
+    payload: Dict[str, Any] = {"error": msg}
+    payload.update(extra)
+    return jsonify(payload), status
+
+
+def _extract_customer_id() -> Optional[str]:
+    cid = request.headers.get("X-Customer-Id")
+    if cid and cid.strip():
+        return cid.strip()
+
+    cid = request.args.get("customer_id")
+    if cid and cid.strip():
+        return cid.strip()
+
+    data = request.get_json(silent=True) or {}
+    if isinstance(data, dict):
+        cid2 = data.get("customer_id")
+        if isinstance(cid2, str) and cid2.strip():
+            return cid2.strip()
+    return None
+
+
+@store_bp.get("/health")
+def store_health():
+    return jsonify({"status": "ok"}), 200
+
+
+@store_bp.post("/portal/session")
+def create_customer_portal_session():
+    """
+    Creates a Stripe Customer Portal session.
+
+    Required env:
+      - STRIPE_SECRET_KEY
+
+    Optional env:
+      - APP_BASE_URL
+      - STRIPE_PORTAL_RETURN_URL (defaults to {APP_BASE_URL}/dashboard)
+    """
+    customer_id = _extract_customer_id()
+    if not customer_id:
+        return _json_error(
+            "Missing customer_id (X-Customer-Id header, query, or JSON).", 401
         )
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS subscriptions (
-                company_id TEXT PRIMARY KEY,
-                stripe_customer_id TEXT,
-                stripe_subscription_id TEXT,
-                status TEXT NOT NULL,
-                cancel_at_period_end INTEGER DEFAULT 0,
-                current_period_end INTEGER,
-                price_id TEXT,
-                plan_code TEXT,
-                latest_invoice_id TEXT,
-                meta_json TEXT DEFAULT '{}',
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
-            )
-            """
+
+    return_url = _env(
+        "STRIPE_PORTAL_RETURN_URL", f"{_base_url()}/dashboard"
+    )
+
+    try:
+        stripe = _stripe()
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=return_url,
         )
-        conn.commit()
-    finally:
-        conn.close()
+        return jsonify({"url": session.get("url")}), 200
+    except Exception as e:
+        return _json_error("Failed to create customer portal session", 500, detail=str(e))
 
 
-def upsert_customer(company_id: str, stripe_customer_id: str, email: str = "", meta: Optional[Dict[str, Any]] = None) -> None:
-    meta = meta or {}
-    now = _utc_now_iso()
-    conn = _db()
-    try:
-        conn.execute(
-            """
-            INSERT INTO stripe_customers (company_id, stripe_customer_id, email, meta_json, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ON CONFLICT(company_id) DO UPDATE SET
-              stripe_customer_id=excluded.stripe_customer_id,
-              email=excluded.email,
-              meta_json=excluded.meta_json,
-              updated_at=excluded.updated_at
-            """,
-            (company_id, stripe_customer_id, email, json.dumps(meta), now, now),
+@store_bp.get("/subscription/status")
+def subscription_status():
+    """
+    Returns basic subscription status for a customer.
+
+    Required env:
+      - STRIPE_SECRET_KEY
+    """
+    customer_id = _extract_customer_id()
+    if not customer_id:
+        return _json_error(
+            "Missing customer_id (X-Customer-Id header, query, or JSON).", 401
         )
-        conn.commit()
-    finally:
-        conn.close()
 
-
-def get_customer(company_id: str) -> Optional[Dict[str, Any]]:
-    conn = _db()
     try:
-        row = conn.execute(
-            "SELECT company_id, stripe_customer_id, email, meta_json, created_at, updated_at FROM stripe_customers WHERE company_id = ?",
-            (company_id,),
-        ).fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        try:
-            d["meta"] = json.loads(d.get("meta_json") or "{}")
-        except Exception:
-            d["meta"] = {}
-        d.pop("meta_json", None)
-        return d
-    finally:
-        conn.close()
+        stripe = _stripe()
+        subs = stripe.Subscription.list(customer=customer_id, status="all", limit=10)
+        data = subs.get("data") or []
+
+        active = False
+        status = None
+        price_id = None
+        subscription_id = None
+
+        for s in data:
+            st = (s.get("status") or "").lower()
+            if st in {"active", "trialing"}:
+                active = True
+                status = st
+                subscription_id = s.get("id")
+                items = s.get("items", {}).get("data", [])
+                if items:
+                    price = items[0].get("price") or {}
+                    price_id = price.get("id")
+                break
+
+        return jsonify(
+            {
+                "customer_id": customer_id,
+                "active": active,
+                "status": status,
+                "subscription_id": subscription_id,
+                "price_id": price_id,
+            }
+        ), 200
+
+    except Exception as e:
+        return _json_error("Failed to fetch subscription status", 500, detail=str(e))
 
 
-def upsert_subscription(
-    *,
-    company_id: str,
-    status: str,
-    stripe_customer_id: str = "",
-    stripe_subscription_id: str = "",
-    cancel_at_period_end: bool = False,
-    current_period_end: Optional[int] = None,
-    price_id: str = "",
-    plan_code: str = "",
-    latest_invoice_id: str = "",
-    meta: Optional[Dict[str, Any]] = None,
-) -> None:
-    meta = meta or {}
-    now = _utc_now_iso()
-    conn = _db()
-    try:
-        conn.execute(
-            """
-            INSERT INTO subscriptions (
-                company_id, stripe_customer_id, stripe_subscription_id, status, cancel_at_period_end,
-                current_period_end, price_id, plan_code, latest_invoice_id, meta_json, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ON CONFLICT(company_id) DO UPDATE SET
-              stripe_customer_id=excluded.stripe_customer_id,
-              stripe_subscription_id=excluded.stripe_subscription_id,
-              status=excluded.status,
-              cancel_at_period_end=excluded.cancel_at_period_end,
-              current_period_end=excluded.current_period_end,
-              price_id=excluded.price_id,
-              plan_code=excluded.plan_code,
-              latest_invoice_id=excluded.latest_invoice_id,
-              meta_json=excluded.meta_json,
-              updated_at=excluded.updated_at
-            """,
-            (
-                company_id,
-                stripe_customer_id,
-                stripe_subscription_id,
-                status,
-                1 if cancel_at_period_end else 0,
-                current_period_end,
-                price_id,
-                plan_code,
-                latest_invoice_id,
-                json.dumps(meta),
-                now,
-                now,
-            ),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
-def get_subscription(company_id: str) -> Optional[Dict[str, Any]]:
-    conn = _db()
-    try:
-        row = conn.execute(
-            """
-            SELECT company_id, stripe_customer_id, stripe_subscription_id, status, cancel_at_period_end,
-                   current_period_end, price_id, plan_code, latest_invoice_id, meta_json, created_at, updated_at
-            FROM subscriptions
-            WHERE company_id = ?
-            """,
-            (company_id,),
-        ).fetchone()
-        if not row:
-            return None
-        d = dict(row)
-        try:
-            d["meta"] = json.loads(d.get("meta_json") or "{}")
-        except Exception:
-            d["meta"] = {}
-        d.pop("meta_json", None)
-        d["cancel_at_period_end"] = bool(d.get("cancel_at_period_end"))
-        return d
-    finally:
-        conn.close()
-
-
-def is_subscription_active(company_id: str) -> Tuple[bool, str]:
-    sub = get_subscription(company_id)
-    if not sub:
-        return False, "missing_subscription"
-    status = (sub.get("status") or "").strip().lower()
-    if status in {"active", "trialing"}:
-        return True, status
-    return False, status or "inactive"
+if __name__ == "__main__":
+    assert store_bp.name == "store"
+    print("billing/store.py OK")
