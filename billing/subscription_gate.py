@@ -14,8 +14,7 @@ from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, cast
 
 from flask import jsonify, request
 
-from billing.entitlement import (
-    Entitlement,
+from billing.entitlement import has_entitlement
     entitlements_from_stripe_price_id,
     entitlements_to_dict,
     feature_enabled,
