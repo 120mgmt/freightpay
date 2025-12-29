@@ -32,4 +32,5 @@ def get_default_currency() -> str:
 
 
 def optional(v: Optional[str]) -> str:
-    return (v or "").strip(
+    return (v or "").strip()
+    return val
