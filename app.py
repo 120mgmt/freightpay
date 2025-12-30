@@ -13,11 +13,10 @@ from flask import Flask, jsonify
 # ======================
 # These MUST exist exactly as named in your repo
 
-from payroll.routes.payroll_routes import payroll_bp
 from billing.checkout import billing_bp
 from billing.customer_portal import portal_bp
 from billing.webhooks import webhook_bp
-
+from payroll.routes.payroll_routes import payroll_bp
 
 # ======================
 # App Factory
