@@ -1,8 +1,7 @@
+
 # File: billing/subscription_gate.py
-# Purpose: Enforce subscription + entitlement access across protected routes
-# Status: FULL production-ready (Stripe + entitlements + caching + feature gating)
-# Import usage:
-#   from billing.subscription_gate import require_active_subscription
+# Purpose: Production-ready subscription + entitlement gating
+# Import target: from billing.subscription_gate import require_active_subscription
 
 from __future__ import annotations
 
@@ -15,81 +14,33 @@ from typing import Any, Callable, Dict, Optional, Tuple, TypeVar, cast
 from flask import jsonify, request
 
 from billing.entitlement import (
-    has_entitlement,
-        entitlements_from_stripe_price_id,
-        entitlements_to_dict,
-        feature_enabled,
-        subscription_required_enabled,
+    Entitlements,
+    entitlements_from_stripe_price_id,
+    entitlements_to_dict,
+    feature_enabled,
+    subscription_required_enabled,
 )
 
 F = TypeVar("F", bound=Callable[..., Any])
 
-# -------------------------
-# Utilities
-# -------------------------
+# In-memory cache (best-effort; per-process). OK for single instance; safe fallback otherwise.
+# customer_id -> (expires_at_epoch, payload_dict)
+_SUB_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
 
 def _truthy(v: Optional[str]) -> bool:
     return (v or "").strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def _bypass_enabled() -> bool:
+    # Emergency bypass. Keep OFF in production unless explicitly enabled.
     return _truthy(os.getenv("SUBSCRIPTION_BYPASS", "0"))
-
-
-def _extract_customer_id() -> Optional[str]:
-    cid = request.headers.get("X-Customer-Id")
-    if cid and cid.strip():
-        return cid.strip()
-
-    cid = request.args.get("customer_id")
-    if cid and cid.strip():
-        return cid.strip()
-
-    data = request.get_json(silent=True) or {}
-    if isinstance(data, dict):
-        cid2 = data.get("customer_id")
-        if isinstance(cid2, str) and cid2.strip():
-            return cid2.strip()
-
-    return None
-
-
-def _stripe_enabled() -> bool:
-    return bool((os.getenv("STRIPE_SECRET_KEY") or "").strip())
-
-
-def _stripe_import():
-    import stripe  # type: ignore
-
-    stripe.api_key = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
-    return stripe
-
-
-# -------------------------
-# Data Models
-# -------------------------
-
-@dataclass
-class SubscriptionCheckResult:
-    active: bool
-    reason: str
-    customer_id: str
-    entitlements: Optional[Entitlements] = None
-    subscription_id: Optional[str] = None
-    price_id: Optional[str] = None
-    status: Optional[str] = None
-
-
-# -------------------------
-# Cache (process-local)
-# -------------------------
-
-_SUB_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 
 
 def _cache_ttl_seconds() -> int:
     try:
-        return max(5, int(os.getenv("SUBSCRIPTION_CACHE_TTL", "30")))
+        # Default 30s; minimum 5s to avoid thrashing Stripe.
+        return max(5, int((os.getenv("SUBSCRIPTION_CACHE_TTL", "30") or "30").strip()))
     except Exception:
         return 30
 
@@ -110,27 +61,95 @@ def _cache_set(customer_id: str, payload: Dict[str, Any]) -> None:
     _SUB_CACHE[customer_id] = (time.time() + _cache_ttl_seconds(), payload)
 
 
-# -------------------------
-# Stripe helpers
-# -------------------------
+def _extract_customer_id() -> Optional[str]:
+    # Priority: header -> query -> JSON body
+    cid = request.headers.get("X-Customer-Id")
+    if isinstance(cid, str) and cid.strip():
+        return cid.strip()
+
+    cid = request.args.get("customer_id")
+    if isinstance(cid, str) and cid.strip():
+        return cid.strip()
+
+    data = request.get_json(silent=True) or {}
+    if isinstance(data, dict):
+        cid2 = data.get("customer_id")
+        if isinstance(cid2, str) and cid2.strip():
+            return cid2.strip()
+
+    return None
+
+
+def _stripe_enabled() -> bool:
+    return bool((os.getenv("STRIPE_SECRET_KEY") or "").strip())
+
+
+def _stripe_import():
+    # Import Stripe only when needed to avoid crashing imports when gating is OFF.
+    import stripe  # type: ignore
+
+    stripe.api_key = (os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    return stripe
+
 
 def _pick_primary_price_id(subscription: Any) -> Optional[str]:
+    """
+    Stripe Subscription object -> first line item's Price ID (recurring plan).
+    """
     try:
-        items = subscription.get("items", {}).get("data", [])
+        items = subscription.get("items", {}).get("data", [])  # type: ignore[union-attr]
         if not items:
             return None
         price = items[0].get("price") or {}
         pid = price.get("id")
-        return pid.strip() if isinstance(pid, str) and pid.strip() else None
+        if isinstance(pid, str) and pid.strip():
+            return pid.strip()
+        return None
     except Exception:
         return None
 
 
-def _is_subscription_active_status(status: Optional[str]) -> bool:
+def _is_active_subscription_status(status: Optional[str]) -> bool:
     return (status or "").strip().lower() in {"active", "trialing"}
 
 
+@dataclass
+class SubscriptionCheckResult:
+    active: bool
+    reason: str
+    customer_id: str
+    entitlements: Optional[Entitlements] = None
+    subscription_id: Optional[str] = None
+    price_id: Optional[str] = None
+    status: Optional[str] = None
+
+
+def _rehydrate_entitlements(d: Any) -> Optional[Entitlements]:
+    if not isinstance(d, dict):
+        return None
+    plan = d.get("plan")
+    features = d.get("features")
+    limits = d.get("limits")
+    if not isinstance(plan, str):
+        plan = "free"
+    if not isinstance(features, dict):
+        features = {}
+    if not isinstance(limits, dict):
+        limits = {}
+    # Entitlements dataclass signature: (plan, features, limits)
+    try:
+        return Entitlements(plan=plan, features=dict(features), limits=dict(limits))
+    except Exception:
+        return None
+
+
 def _check_subscription_via_stripe(customer_id: str) -> SubscriptionCheckResult:
+    """
+    Stripe-backed subscription status:
+      - customer_id is expected to be a Stripe Customer ID (cus_...)
+      - active = subscription status in {"active","trialing"}
+      - entitlements derived from Stripe Price ID via entitlements_from_stripe_price_id
+    """
     if not _stripe_enabled():
         return SubscriptionCheckResult(
             active=False,
@@ -140,19 +159,11 @@ def _check_subscription_via_stripe(customer_id: str) -> SubscriptionCheckResult:
 
     cached = _cache_get(customer_id)
     if cached:
-        ent = None
-        if isinstance(cached.get("entitlements"), dict):
-            e = cached["entitlements"]
-            ent = Entitlements(
-                plan=str(e.get("plan", "starter")),
-                features=dict(e.get("features", {})),
-                limits=dict(e.get("limits", {})),
-            )
         return SubscriptionCheckResult(
-            active=bool(cached.get("active")),
+            active=bool(cached.get("active", False)),
             reason=str(cached.get("reason", "cached")),
             customer_id=customer_id,
-            entitlements=ent,
+            entitlements=_rehydrate_entitlements(cached.get("entitlements")),
             subscription_id=cached.get("subscription_id"),
             price_id=cached.get("price_id"),
             status=cached.get("status"),
@@ -165,10 +176,11 @@ def _check_subscription_via_stripe(customer_id: str) -> SubscriptionCheckResult:
 
         best = None
         for s in data:
-            if _is_subscription_active_status(s.get("status")):
+            st = (s.get("status") or "").strip().lower()
+            if st in {"active", "trialing"}:
                 best = s
                 break
-        if not best and data:
+        if best is None and data:
             best = data[0]
 
         if not best:
@@ -181,15 +193,11 @@ def _check_subscription_via_stripe(customer_id: str) -> SubscriptionCheckResult:
                 "entitlements": None,
             }
             _cache_set(customer_id, payload)
-            return SubscriptionCheckResult(
-                active=False,
-                reason="no_subscription",
-                customer_id=customer_id,
-            )
+            return SubscriptionCheckResult(active=False, reason="no_subscription", customer_id=customer_id)
 
         status = (best.get("status") or "").strip().lower()
         price_id = _pick_primary_price_id(best)
-        active = _is_subscription_active_status(status)
+        active = _is_active_subscription_status(status)
 
         ent = entitlements_from_stripe_price_id(price_id) if active else None
 
@@ -205,82 +213,111 @@ def _check_subscription_via_stripe(customer_id: str) -> SubscriptionCheckResult:
 
         return SubscriptionCheckResult(
             active=active,
-            reason=payload["reason"],
+            reason=str(payload["reason"]),
             customer_id=customer_id,
             entitlements=ent,
-            subscription_id=payload["subscription_id"],
+            subscription_id=str(payload["subscription_id"]) if payload["subscription_id"] else None,
             price_id=price_id,
             status=status,
         )
-
     except Exception:
-        return SubscriptionCheckResult(
-            active=False,
-            reason="stripe_error",
-            customer_id=customer_id,
-        )
+        # Conservative failure: if Stripe fails while gating is ON, deny.
+        return SubscriptionCheckResult(active=False, reason="stripe_error", customer_id=customer_id)
 
 
-# -------------------------
-# Decorator
-# -------------------------
+def _allow_when_gating_off() -> bool:
+    return not subscription_required_enabled()
 
-def require_active_subscription(
-    _fn: Optional[F] = None, *, feature: Optional[str] = None
-) -> F:
+
+def require_active_subscription(_fn: Optional[F] = None, *, feature: Optional[str] = None) -> F:
     """
-    Usage:
+    Works as:
       @require_active_subscription
       @require_active_subscription()
-      @require_active_subscription(feature="payroll_run")
+      @require_active_subscription(feature="payroll:run")
     """
 
     def decorator(fn: F) -> F:
         @wraps(fn)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
-            if not subscription_required_enabled():
-
+            # Gating OFF => allow
+            if _allow_when_gating_off():
                 return fn(*args, **kwargs)
 
+            # Bypass ON => allow
             if _bypass_enabled():
                 return fn(*args, **kwargs)
 
             customer_id = _extract_customer_id()
             if not customer_id:
-                return jsonify(
-                    {
-                        "error": "subscription_required",
-                        "message": "Missing customer_id (X-Customer-Id header, query, or JSON).",
-                    }
-                ), 401
+                return (
+                    jsonify(
+                        {
+                            "error": "subscription_required",
+                            "message": "Missing customer_id (X-Customer-Id header, query, or JSON).",
+                        }
+                    ),
+                    401,
+                )
 
             result = _check_subscription_via_stripe(customer_id)
             if not result.active:
-                return jsonify(
-                    {
-                        "error": "subscription_inactive",
-                        "message": "Active subscription required.",
-                        "reason": result.reason,
-                        "customer_id": customer_id,
-                    }
-                ), 402
+                return (
+                    jsonify(
+                        {
+                            "error": "subscription_inactive",
+                            "message": "Active subscription required.",
+                            "reason": result.reason,
+                            "customer_id": customer_id,
+                        }
+                    ),
+                    402,
+                )
 
-            if feature and result.entitlements and not feature_enabled(
-                result.entitlements, feature
-            ):
-                return jsonify(
-                    {
-                        "error": "feature_not_entitled",
-                        "message": "Your plan does not include this feature.",
-                        "feature": feature,
-                        "plan": result.entitlements.plan,
-                    }
-                ), 403
+            # Feature entitlement check (derived from price_id → plan)
+            if feature:
+                ent = result.entitlements
+                if ent is None:
+                    return (
+                        jsonify(
+                            {
+                                "error": "entitlements_missing",
+                                "message": "Entitlements could not be resolved for this subscription.",
+                                "feature": feature,
+                                "customer_id": customer_id,
+                            }
+                        ),
+                        403,
+                    )
+                if not feature_enabled(ent, feature):
+                    return (
+                        jsonify(
+                            {
+                                "error": "feature_not_entitled",
+                                "message": "Your plan does not include this feature.",
+                                "feature": feature,
+                                "plan": ent.plan,
+                            }
+                        ),
+                        403,
+                    )
 
             return fn(*args, **kwargs)
 
         return cast(F, wrapper)
 
     if _fn is None:
-        return cast(F, decorator)
-    return decorator(_fn)
+        return cast(F, decorator)  # used as @require_active_subscription(...)
+    return decorator(_fn)  # used as @require_active_subscription
+
+
+if __name__ == "__main__":
+    # Minimal sanity (no Stripe calls)
+    os.environ["ENTITLEMENTS_ENABLED"] = "0"
+    assert subscription_required_enabled() is False
+    os.environ["ENTITLEMENTS_ENABLED"] = "1"
+    os.environ["ENTITLEMENTS_BYPASS"] = "1"
+    assert subscription_required_enabled() is False
+    os.environ["ENTITLEMENTS_BYPASS"] = "0"
+    assert subscription_required_enabled() is True
+    print("billing/subscription_gate.py OK")
