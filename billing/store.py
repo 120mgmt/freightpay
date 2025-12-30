@@ -18,6 +18,9 @@ def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     v = v.strip()
     return v if v else None
 
+def get_customer(custtomer_id):
+    import stripe
+    return stripe.Customer.retrieve(customer_id)
 
 def _stripe():
     try:
