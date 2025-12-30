@@ -183,3 +183,5 @@ def stripe_webhook() -> Tuple[Response, int]:
 if __name__ == "__main__":
     assert webhooks_bp.name == "stripe_webhooks"
     print("billing/webhooks.py OK")
+
+webhook_bp = webhooks_bp
