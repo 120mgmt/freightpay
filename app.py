@@ -7,7 +7,7 @@ from billing.checkout import billing_bp
 from billing.customer_portal import portal_bp
 from billing.webhooks import webhook_bp
 from payroll.routes.payroll_routes import payroll_bp
-from freightpay.legal.routes.legal_routes import legal_bp
+from legal.routes.legal_routes import legal_bp
 from bookkeeping.routes import bookkeeping_bp
 from integrations.gusto.oauth import gusto_bp
 
