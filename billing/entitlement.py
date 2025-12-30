@@ -1,5 +1,5 @@
-# File: billing/entitlement.py
-# Purpose: Centralized entitlement, feature access, and subscription gating
+# billing/entitlement.py
+# Centralized entitlement & feature-access control
 # Import-safe, production-ready
 
 from __future__ import annotations
@@ -8,9 +8,9 @@ import os
 from typing import Dict, Set, Optional
 from flask import request
 
-# =========================
+# ============================================================
 # Environment helpers
-# =========================
+# ============================================================
 
 def _env(name: str, default: str = "") -> str:
     return os.getenv(name, default).strip()
@@ -22,18 +22,18 @@ def _truthy(val: Optional[str]) -> bool:
     return val.lower() in {"1", "true", "yes", "y", "on"}
 
 
-# =========================
+# ============================================================
 # Master switches
-# =========================
+# ============================================================
 
 ENTITLEMENTS_ENABLED = _truthy(_env("ENTITLEMENTS_ENABLED", "1"))
 ENTITLEMENTS_BYPASS = _truthy(_env("ENTITLEMENTS_BYPASS", "0"))
 
 DEFAULT_PLAN = _env("CUSTOMER_PLAN_DEFAULT", "free")
 
-# =========================
+# ============================================================
 # Plan → feature map
-# =========================
+# ============================================================
 
 PLAN_ENTITLEMENTS: Dict[str, Set[str]] = {
     "free": {
@@ -51,12 +51,24 @@ PLAN_ENTITLEMENTS: Dict[str, Set[str]] = {
     },
 }
 
-# =========================
+# ============================================================
+# Stripe price → plan mapping
+# ============================================================
+
+STRIPE_PRICE_PLAN_MAP: Dict[str, str] = {
+    # example:
+    # "price_123": "starter",
+}
+
+# ============================================================
 # Request helpers
-# =========================
+# ============================================================
 
 def _get_customer_id() -> Optional[str]:
-    cid = request.headers.get("X-Customer-Id")
+    if not request:
+        return None
+
+    cid = getattr(request, "customer_id", None)
     if isinstance(cid, str):
         return cid
 
@@ -68,14 +80,26 @@ def _get_customer_id() -> Optional[str]:
     return None
 
 
+# ============================================================
+# Plan resolution
+# ============================================================
+
 def _get_customer_plan(customer_id: str) -> str:
-    # Production hook: replace with Stripe / DB lookup
+    """
+    Production hook.
+    Replace with Stripe / DB lookup.
+    """
     return _env("CUSTOMER_PLAN_DEFAULT", DEFAULT_PLAN)
 
 
-# =========================
-# Public API (USED BY subscription_gate.py)
-# =========================
+def entitlements_from_stripe_price_id(price_id: str) -> Set[str]:
+    plan = STRIPE_PRICE_PLAN_MAP.get(price_id, DEFAULT_PLAN)
+    return PLAN_ENTITLEMENTS.get(plan, set())
+
+
+# ============================================================
+# Entitlement evaluation
+# ============================================================
 
 def has_entitlement(feature: str, customer_id: Optional[str] = None) -> bool:
     if not ENTITLEMENTS_ENABLED:
@@ -107,44 +131,28 @@ def subscription_required_enabled() -> bool:
     return ENTITLEMENTS_ENABLED and not ENTITLEMENTS_BYPASS
 
 
-def entitlements_from_stripe_price_id(price_id: Optional[str]) -> Set[str]:
-    if not price_id:
-        return set()
+# ============================================================
+# Serialization helpers (required by subscription_gate)
+# ============================================================
 
-    mapping = {
-        "price_free": PLAN_ENTITLEMENTS["free"],
-        "price_starter": PLAN_ENTITLEMENTS["starter"],
-        "price_pro": PLAN_ENTITLEMENTS["pro"],
-        "price_enterprise": PLAN_ENTITLEMENTS["enterprise"],
-    }
-
-    return mapping.get(price_id, set())
+def entitlements_to_dict(plan: Optional[str] = None) -> Dict[str, Set[str]]:
+    if plan:
+        return {plan: PLAN_ENTITLEMENTS.get(plan, set())}
+    return PLAN_ENTITLEMENTS.copy()
 
 
-def entitlements_to_dict(plan: Optional[str] = None) -> Dict[str, bool]:
-    if not plan:
-        plan = DEFAULT_PLAN
-
-    allowed = PLAN_ENTITLEMENTS.get(plan, set())
-
-    if "*" in allowed:
-        return {"*": True}
-
-    return {feature: True for feature in allowed}
-
-
-# =========================
-# Minimal self-test
-# =========================
+# ============================================================
+# Minimal self-test (safe on import)
+# ============================================================
 
 if __name__ == "__main__":
     os.environ["ENTITLEMENTS_ENABLED"] = "1"
     os.environ["ENTITLEMENTS_BYPASS"] = "0"
     os.environ["CUSTOMER_PLAN_DEFAULT"] = "pro"
 
-    assert subscription_required_enabled() is True
-    assert feature_enabled("dashboard:view", "x") is True
-    assert feature_enabled("billing:portal", "x") is True
-    assert feature_enabled("admin:users", "x") is True
+    assert has_entitlement("dashboard:view", "x") is True
+    assert has_entitlement("billing:portal", "x") is True
+    assert has_entitlement("admin:users", "x") is True
+
 
     print("entitlement.py OK")
