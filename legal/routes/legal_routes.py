@@ -1,27 +1,28 @@
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, render_template
 from sqlalchemy.orm import Session
 from datetime import datetime
+
 from freightpay.models import User, LegalAcceptance
 from freightpay.utils.database import get_db
 from freightpay.utils.auth import require_auth
 
 legal_bp = Blueprint("legal", __name__, url_prefix="/legal")
 
+
 @legal_bp.get("/terms")
 def get_terms():
-    return jsonify({
-        "title": "Terms of Service",
-        "version": "1.0",
-        "content": "By using FreightPay, you agree to payroll processing, ACH transfers, and compliance requirements."
-    })
+    return render_template("legal/terms.html"), 200
+
 
 @legal_bp.get("/privacy")
 def get_privacy():
-    return jsonify({
-        "title": "Privacy Policy",
-        "version": "1.0",
-        "content": "FreightPay stores user data securely and never sells personal information."
-    })
+    return render_template("legal/privacy.html"), 200
+
+
+@legal_bp.get("/refund")
+def get_refund():
+    return render_template("legal/refund.html"), 200
+
 
 @legal_bp.post("/accept")
 @require_auth
@@ -41,13 +42,5 @@ def accept_legal(user: User, db: Session = get_db()):
     db.add(LegalAcceptance(user_id=user.id, document="privacy"))
     db.commit()
 
-    return jsonify({"status": "accepted"})
-
-@legal_bp.get("/refund")
-def get_refund():
-    return jsonify({
-        "title": "Refund Policy",
-        "version": "1.0",
-        "content": "All fees are non-refundable once payroll or billing services have been initiated, except where required by law."
-    })
+    return jsonify({"status": "accepted"}), 200
 
