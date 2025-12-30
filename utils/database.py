@@ -1,6 +1,6 @@
 import os
 
-from sqlalchemy.orm import declarative base
+from sqlalchemy.orm import declarative_base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
