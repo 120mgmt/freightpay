@@ -1,7 +1,7 @@
-# freightpay/bookkeeping/routes.py
+# bookkeeping/routes.py
 
 from flask import Blueprint, jsonify, request
-from freightpay.bookkeeping.ledger import (
+from bookkeeping.ledger import (
     get_ledger,
     clear_ledger,
     record_payroll_run,
