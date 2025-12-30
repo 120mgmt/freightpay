@@ -10,6 +10,8 @@ from billing.checkout import billing_bp
 from billing.customer_portal import portal_bp
 from billing.webhooks import webhook_bp
 from payroll.routes.payroll_routes import payroll_bp
+from freightpay.legal.routes.legal_routes import legal_bp
+
 
 # Config
 from config import get_config
@@ -34,7 +36,7 @@ def create_app() -> Flask:
     app.register_blueprint(billing_bp)
     app.register_blueprint(portal_bp)
     app.register_blueprint(webhook_bp)
-
+    app.register_blueprint(legal_bp)
     return app
 
 
