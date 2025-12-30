@@ -79,3 +79,6 @@ def record_payroll_run(
 
 def get_ledger() -> List[Dict[str, Any]]:
     return LEDGER
+
+def clear_ledger():
+    return True
