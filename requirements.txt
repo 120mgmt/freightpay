@@ -1,14 +1,21 @@
-# requirements.txt
+# requirements.txt - PRODUCTION / RENDER SAFE (Python 3.12)
 
 Flask==3.0.3
 gunicorn==21.2.0
 
-# Billing / Payments
+# Stripe / Billing
 stripe==9.12.0
 
-#Security / Utils
-python-dotenv==1.0.1
+# Database / ORM
+SQLAlchemy==2.0.30
 Flask-SQLAlchemy==3.1.1
 Flask-Migrate==4.0.7
+psycopg2-binary==2.9.9
+
+# Auth / Security
 Flask-JWT-Extended==4.6.0
 Werkzeug==3.0.3
+
+# Config / Utils
+python-cotenv==1.0.1
+requests==2.32.3
