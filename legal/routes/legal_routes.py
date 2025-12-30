@@ -2,9 +2,9 @@ from flask import Blueprint, jsonify, request, render_template
 from sqlalchemy.orm import Session
 from datetime import datetime
 
-from freightpay.models import User, LegalAcceptance
-from freightpay.utils.database import get_db
-from freightpay.utils.auth import require_auth
+from models import User, LegalAcceptance
+from utils.database import get_db
+from utils.auth import require_auth
 
 legal_bp = Blueprint("legal", __name__, url_prefix="/legal")
 
