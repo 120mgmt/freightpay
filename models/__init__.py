@@ -1,6 +1,7 @@
 # freightpay/models/__init__.py
 # Explicit model imports to ensure metadata registration on app startup
 
+from .user import User
 from .base import Base
 from .company import Company
 from .driver import Driver
@@ -10,6 +11,7 @@ from .settlement import Settlement
 from .ledger import LedgerEntry
 
 __all__ = [
+    "User",
     "Base",
     "Company",
     "Driver",
