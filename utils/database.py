@@ -1,8 +1,10 @@
 import os
 
+from sqlalchemy.orm import declarative base
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+Base = declarative_base()
 # Render sets DATABASE_URL for Postgres. We also support SQLite for local/dev.
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///freightpay.db")
 
