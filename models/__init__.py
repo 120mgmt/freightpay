@@ -9,6 +9,7 @@ from .pay_config import PayConfig
 from .payroll_run import PayrollRun
 from .settlement import Settlement
 from .ledger import LedgerEntry
+from .legal_acceptance import LegalAcceptance
 
 __all__ = [
     "User",
@@ -19,4 +20,5 @@ __all__ = [
     "PayrollRun",
     "Settlement",
     "LedgerEntry",
+    "LegalAcceptance"
 ]
