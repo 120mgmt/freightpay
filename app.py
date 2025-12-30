@@ -37,8 +37,10 @@ def create_app() -> Flask:
     def health():
         return jsonify({"status": "ok"}), 200
 
-    # Blueprint registry (order matters: webhooks last)
-    # Blueprint registry (order matters: webhooks last)
+   # Gunicorn entrypoint
+app = create_app()
+
+# Blueprint registry (order matters: webhooks last)
 app.register_blueprint(payroll_bp)
 app.register_blueprint(billing_bp)
 app.register_blueprint(portal_bp)
@@ -48,8 +50,6 @@ from billing.store import store_bp
 app.register_blueprint(store_bp)
 
 app.register_blueprint(webhook_bp)
-
-return app
 
 # Gunicorn entrypoint
 app = create_app()
