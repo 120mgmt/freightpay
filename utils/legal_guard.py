@@ -1,5 +1,5 @@
 from flask import jsonify
-from freightpay.utils.auth import get_current_user
+from utils.auth import get_current_user
 
 EXEMPT_PATHS = (
     "/legal/terms",
