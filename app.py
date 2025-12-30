@@ -15,7 +15,7 @@ from integrations.gusto.oauth import gusto_bp
 from config import get_config
 
 # Legal enforcement
-from freightpay.utils.legal_guard import enforce_legal_acceptance
+from utils.legal_guard import enforce_legal_acceptance
 
 
 def create_app() -> Flask:
