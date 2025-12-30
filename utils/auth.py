@@ -22,3 +22,9 @@ def require_auth(fn):
             db.close()
 
     return wrapper
+
+from flask import g
+
+def get_current_user():
+    return getattr(g, "current_user", None)
+
