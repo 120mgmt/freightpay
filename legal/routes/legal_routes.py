@@ -42,3 +42,12 @@ def accept_legal(user: User, db: Session = get_db()):
     db.commit()
 
     return jsonify({"status": "accepted"})
+
+@legal_bp.get("/refund")
+def get_refund():
+    return jsonify({
+        "title": "Refund Policy",
+        "version": "1.0",
+        "content": "All fees are non-refundable once payroll or billing services have been initiated, except where required by law."
+    })
+
