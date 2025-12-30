@@ -1,6 +1,6 @@
 # freightpay/app.py
 
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 
 # Blueprint imports (must exist exactly as named)
 from billing.checkout import billing_bp
@@ -21,15 +21,8 @@ from utils.legal_guard import enforce_legal_acceptance
 def create_app() -> Flask:
     app = Flask(__name__)
 
-    # Enforce legal acceptance globally (runs before every request)
-    @app.before_request
-    def legal_guard():
-        return enforce_legal_acceptance()
-
     # Load config
     app.config.from_object(get_config())
-
-    # Core config
     app.config["JSON_SORT_KEYS"] = False
 
     # Health check (Render requires this)
@@ -37,19 +30,38 @@ def create_app() -> Flask:
     def health():
         return jsonify({"status": "ok"}), 200
 
-   # Gunicorn entrypoint
-app = create_app()
+    # Enforce legal acceptance globally (runs before every request)
+    @app.before_request
+    def legal_guard():
+        # Never block health / static / legal pages / webhooks
+        path = request.path or ""
+        if path.startswith("/health"):
+            return None
+        if path.startswith("/legal"):
+            return None
+        if path.startswith("/static"):
+            return None
+        if path.startswith("/billing/webhook") or path.startswith("/webhook"):
+            return None
 
-# Blueprint registry (order matters: webhooks last)
-app.register_blueprint(payroll_bp)
-app.register_blueprint(billing_bp)
-app.register_blueprint(portal_bp)
-app.register_blueprint(legal_bp)
+        return enforce_legal_acceptance()
 
-from billing.store import store_bp
-app.register_blueprint(store_bp)
+    # Blueprint registry (order matters: webhooks last)
+    app.register_blueprint(payroll_bp)
+    app.register_blueprint(billing_bp)
+    app.register_blueprint(portal_bp)
+    app.register_blueprint(legal_bp)
+    app.register_blueprint(bookkeeping_bp)
+    app.register_blueprint(gusto_bp)
 
-app.register_blueprint(webhook_bp)
+    # Optional: billing store blueprint (if present)
+    from billing.store import store_bp
+    app.register_blueprint(store_bp)
+
+    app.register_blueprint(webhook_bp)
+
+    return app
+
 
 # Gunicorn entrypoint
 app = create_app()
