@@ -10,6 +10,8 @@ from flask import Blueprint, jsonify, request
 
 store_bp = Blueprint("store", __name__, url_prefix="/store")
 
+def init_billing_db():
+    return None
 
 def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     v = os.getenv(name, default)
