@@ -5,7 +5,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
 
@@ -20,7 +20,11 @@ def _get_env(name: str, default: Optional[str] = None) -> Optional[str]:
     return val if val else None
 
 
-def _json_error(message: str, status: int = 400, **extra: Any):
+def _truthy(v: Optional[str]) -> bool:
+    return (v or "").strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _json_error(message: str, status: int = 400, **extra: Any) -> Tuple[Any, int]:
     payload: Dict[str, Any] = {"error": message}
     payload.update(extra)
     return jsonify(payload), status
@@ -51,6 +55,28 @@ def _base_url() -> str:
     return request.host_url.rstrip("/")
 
 
+def _extract_customer_id(data: Dict[str, Any]) -> Optional[str]:
+    """
+    Priority:
+      1) Header: X-Customer-Id
+      2) JSON:   customer_id
+      3) Query:  customer_id
+    """
+    cid = request.headers.get("X-Customer-Id")
+    if cid and cid.strip():
+        return cid.strip()
+
+    cid = data.get("customer_id")
+    if isinstance(cid, str) and cid.strip():
+        return cid.strip()
+
+    cid = request.args.get("customer_id")
+    if cid and cid.strip():
+        return cid.strip()
+
+    return None
+
+
 @billing_bp.get("/health")
 def billing_health():
     return jsonify({"status": "ok"}), 200
@@ -64,33 +90,56 @@ def create_checkout_session():
     Required env:
       - STRIPE_SECRET_KEY
       - STRIPE_PRICE_ID  (recurring price)
+
     Optional env:
       - APP_BASE_URL (e.g. https://freightpay.onrender.com)
       - STRIPE_SUCCESS_URL (defaults to {APP_BASE_URL}/dashboard?checkout=success)
       - STRIPE_CANCEL_URL  (defaults to {APP_BASE_URL}/billing?checkout=cancel)
       - STRIPE_CHECKOUT_ALLOW_PROMO_CODES (1/true/yes to enable)
-      - STRIPE_DEFAULT_CURRENCY (default 'usd')
+      - STRIPE_CHECKOUT_AUTOMATIC_TAX (1/true/yes to enable)
+      - STRIPE_REQUIRE_BILLING_ADDRESS (1/true/yes to require billing address)
+      - STRIPE_TAX_ID_COLLECTION (1/true/yes to enable tax ID collection)
+      - STRIPE_CLIENT_REFERENCE_ID_FIELD (defaults to "customer_id")  # which field to pass into client_reference_id
     """
     price_id = _get_env("STRIPE_PRICE_ID")
     if not price_id:
         return _json_error("Missing STRIPE_PRICE_ID env var", 500)
 
-    # Caller can send email / customer_id; we can attach to Stripe customer later.
-    data = request.get_json(silent=True) or {}
-    customer_email = (data.get("email") or request.args.get("email") or "").strip() or None
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        return _json_error("Invalid JSON body. Send application/json.", 400)
+
+    customer_email = (data.get("email") or request.args.get("email") or "")
+    customer_email = customer_email.strip() or None
+
+    # Support existing customer id when known (recommended for entitlement checks)
+    customer_id = _extract_customer_id(data)
 
     # URLs
     base = _base_url()
     success_url = _get_env("STRIPE_SUCCESS_URL", f"{base}/dashboard?checkout=success")
     cancel_url = _get_env("STRIPE_CANCEL_URL", f"{base}/billing?checkout=cancel")
 
-    allow_promo = (_get_env("STRIPE_CHECKOUT_ALLOW_PROMO_CODES", "0") or "").lower() in {
-        "1",
-        "true",
-        "yes",
-        "y",
-        "on",
-    }
+    allow_promo = _truthy(_get_env("STRIPE_CHECKOUT_ALLOW_PROMO_CODES", "0"))
+    automatic_tax = _truthy(_get_env("STRIPE_CHECKOUT_AUTOMATIC_TAX", "0"))
+    require_billing_address = _truthy(_get_env("STRIPE_REQUIRE_BILLING_ADDRESS", "0"))
+    tax_id_collection = _truthy(_get_env("STRIPE_TAX_ID_COLLECTION", "0"))
+
+    # Optional metadata passthrough
+    metadata_in = data.get("metadata")
+    metadata: Optional[Dict[str, str]] = None
+    if isinstance(metadata_in, dict):
+        metadata = {str(k): str(v) for k, v in metadata_in.items()}
+
+    # Optional: client_reference_id (helps correlate app user -> Stripe checkout)
+    cr_field = (_get_env("STRIPE_CLIENT_REFERENCE_ID_FIELD", "customer_id") or "customer_id").strip()
+    client_reference_id = None
+    if cr_field and isinstance(data.get(cr_field), (str, int)):
+        client_reference_id = str(data.get(cr_field)).strip() or None
+    if client_reference_id is None and customer_id:
+        client_reference_id = customer_id
 
     try:
         stripe = _stripe_client()
@@ -103,23 +152,31 @@ def create_checkout_session():
             "allow_promotion_codes": allow_promo,
         }
 
-        if customer_email:
+        if customer_id:
+            # When you already have a Stripe Customer ID
+            session_kwargs["customer"] = customer_id
+        elif customer_email:
+            # Otherwise, Stripe can create a Customer behind the scenes
             session_kwargs["customer_email"] = customer_email
 
-        # Metadata passthrough (optional)
-        metadata = data.get("metadata")
-        if isinstance(metadata, dict):
-            # Convert to str->str defensively (Stripe metadata requirement)
-            session_kwargs["metadata"] = {str(k): str(v) for k, v in metadata.items()}
+        if client_reference_id:
+            session_kwargs["client_reference_id"] = client_reference_id
+
+        if metadata:
+            session_kwargs["metadata"] = metadata
+
+        if automatic_tax:
+            session_kwargs["automatic_tax"] = {"enabled": True}
+
+        if require_billing_address:
+            session_kwargs["billing_address_collection"] = "required"
+
+        if tax_id_collection:
+            session_kwargs["tax_id_collection"] = {"enabled": True}
 
         session = stripe.checkout.Session.create(**session_kwargs)
 
-        return jsonify(
-            {
-                "id": session.get("id"),
-                "url": session.get("url"),
-            }
-        ), 200
+        return jsonify({"id": session.get("id"), "url": session.get("url")}), 200
 
     except Exception as e:
         return _json_error("Failed to create checkout session", 500, detail=str(e))
@@ -128,21 +185,47 @@ def create_checkout_session():
 @billing_bp.post("/checkout/session/one-time")
 def create_one_time_checkout_session():
     """
-    Optional: one-time payment checkout.
+    One-time payment checkout.
+
     Required env:
       - STRIPE_SECRET_KEY
       - STRIPE_ONE_TIME_PRICE_ID
+
+    Optional env:
+      - APP_BASE_URL
+      - STRIPE_SUCCESS_URL (defaults to {APP_BASE_URL}/dashboard?checkout=success)
+      - STRIPE_CANCEL_URL  (defaults to {APP_BASE_URL}/billing?checkout=cancel)
+      - STRIPE_CHECKOUT_AUTOMATIC_TAX (1/true/yes to enable)
+      - STRIPE_REQUIRE_BILLING_ADDRESS (1/true/yes to require billing address)
+      - STRIPE_TAX_ID_COLLECTION (1/true/yes to enable tax ID collection)
     """
     price_id = _get_env("STRIPE_ONE_TIME_PRICE_ID")
     if not price_id:
         return _json_error("Missing STRIPE_ONE_TIME_PRICE_ID env var", 500)
 
-    data = request.get_json(silent=True) or {}
-    customer_email = (data.get("email") or request.args.get("email") or "").strip() or None
+    data = request.get_json(silent=True)
+    if data is None:
+        data = {}
+    if not isinstance(data, dict):
+        return _json_error("Invalid JSON body. Send application/json.", 400)
+
+    customer_email = (data.get("email") or request.args.get("email") or "")
+    customer_email = customer_email.strip() or None
+
+    customer_id = _extract_customer_id(data)
 
     base = _base_url()
     success_url = _get_env("STRIPE_SUCCESS_URL", f"{base}/dashboard?checkout=success")
     cancel_url = _get_env("STRIPE_CANCEL_URL", f"{base}/billing?checkout=cancel")
+
+    automatic_tax = _truthy(_get_env("STRIPE_CHECKOUT_AUTOMATIC_TAX", "0"))
+    require_billing_address = _truthy(_get_env("STRIPE_REQUIRE_BILLING_ADDRESS", "0"))
+    tax_id_collection = _truthy(_get_env("STRIPE_TAX_ID_COLLECTION", "0"))
+
+    metadata_in = data.get("metadata")
+    metadata: Optional[Dict[str, str]] = None
+    if isinstance(metadata_in, dict):
+        metadata = {str(k): str(v) for k, v in metadata_in.items()}
 
     try:
         stripe = _stripe_client()
@@ -154,12 +237,22 @@ def create_one_time_checkout_session():
             "cancel_url": cancel_url,
         }
 
-        if customer_email:
+        if customer_id:
+            session_kwargs["customer"] = customer_id
+        elif customer_email:
             session_kwargs["customer_email"] = customer_email
 
-        metadata = data.get("metadata")
-        if isinstance(metadata, dict):
-            session_kwargs["metadata"] = {str(k): str(v) for k, v in metadata.items()}
+        if metadata:
+            session_kwargs["metadata"] = metadata
+
+        if automatic_tax:
+            session_kwargs["automatic_tax"] = {"enabled": True}
+
+        if require_billing_address:
+            session_kwargs["billing_address_collection"] = "required"
+
+        if tax_id_collection:
+            session_kwargs["tax_id_collection"] = {"enabled": True}
 
         session = stripe.checkout.Session.create(**session_kwargs)
 
@@ -173,4 +266,3 @@ if __name__ == "__main__":
     # Minimal import-time sanity checks
     assert billing_bp.name == "billing"
     print("billing/checkout.py OK")
-
