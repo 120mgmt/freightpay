@@ -1,8 +1,5 @@
-# app.py — FULL, RESTORED, PRODUCTION-SAFE
+# freightpay/app.py
 
-from __future__ import annotations
-
-import os
 from flask import Flask, jsonify
 
 # Blueprint imports (must exist exactly as named)
@@ -12,13 +9,20 @@ from billing.webhooks import webhook_bp
 from payroll.routes.payroll_routes import payroll_bp
 from freightpay.legal.routes.legal_routes import legal_bp
 
-
 # Config
 from config import get_config
+
+# Legal enforcement
+from freightpay.utils.legal_guard import enforce_legal_acceptance
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
+
+    # Enforce legal acceptance globally (runs before every request)
+    @app.before_request
+    def legal_guard():
+        return enforce_legal_acceptance()
 
     # Load config
     app.config.from_object(get_config())
@@ -35,15 +39,11 @@ def create_app() -> Flask:
     app.register_blueprint(payroll_bp)
     app.register_blueprint(billing_bp)
     app.register_blueprint(portal_bp)
-    app.register_blueprint(webhook_bp)
     app.register_blueprint(legal_bp)
+    app.register_blueprint(webhook_bp)
+
     return app
 
 
 # Gunicorn entrypoint
 app = create_app()
-
-# Local dev only (ignored by Render)
-if __name__ == "__main__":
-    port = int(os.getenv("PORT", "5000"))
-    app.run(host="0.0.0.0", port=port)
