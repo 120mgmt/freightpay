@@ -24,3 +24,10 @@ SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, futu
 def get_db_session():
     """Simple helper: returns a SQLAlchemy session (remember to close it)."""
     return SessionLocal()
+
+def get_db():
+    db = SessionLocal()
+    try:
+        return db
+    finally:
+        db.close()
