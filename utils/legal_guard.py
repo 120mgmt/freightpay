@@ -8,12 +8,11 @@ from typing import Any, Optional
 
 def _safe_get_current_user() -> Optional[Any]:
     """
-    Tries to resolve the currently authenticated user without hard-failing
-    if auth wiring isn't present yet.
+    Attempts to resolve the authenticated user.
+    Fails safely if auth is not wired yet.
     """
     try:
-        # If you have get_current_user implemented in utils/auth.py
-        from utils.auth import get_current_user  # type: ignore
+        from utils.auth import get_current_user  # must exist if auth is enabled
         return get_current_user()
     except Exception:
         return None
@@ -21,31 +20,31 @@ def _safe_get_current_user() -> Optional[Any]:
 
 def enforce_legal_acceptance():
     """
-    Global guard enforced via @app.before_request.
-    - Always allow: health + legal docs endpoints + static + OPTIONS
-    - If user is not authenticated/unknown: allow (do not block public access)
-    - If user is authenticated but hasn't accepted: block with 403 JSON
+    Global legal enforcement guard.
+    Used via @app.before_request.
+
+    Rules:
+    - Always allow health, legal docs, static assets, OPTIONS
+    - Allow unauthenticated/public users
+    - Block authenticated users who have not accepted TOS + Privacy
     """
 
     path = request.path or ""
 
-    # Always-allow routes (prevents "blank page" on docs + keeps Render health happy)
+    # Always-allowed routes
     if (
         path == "/health"
         or path == "/legal/terms"
         or path == "/legal/privacy"
+        or path == "/legal/accept"
         or path.startswith("/static/")
         or request.method == "OPTIONS"
     ):
         return None
 
-    # Allow the accept endpoint itself; it will be protected by @require_auth
-    if path == "/legal/accept":
-        return None
-
     user = _safe_get_current_user()
 
-    # If we can't determine the user (public/unauthenticated), don't block.
+    # Public / unauthenticated access is allowed
     if user is None:
         return None
 
@@ -60,8 +59,14 @@ def enforce_legal_acceptance():
             {
                 "error": "LEGAL_NOT_ACCEPTED",
                 "message": "You must accept the Terms of Service and Privacy Policy to continue.",
-                "required": {"tos": True, "privacy": True},
-                "docs": {"terms": "/legal/terms", "privacy": "/legal/privacy"},
+                "required": {
+                    "tos": True,
+                    "privacy": True
+                },
+                "docs": {
+                    "terms": "/legal/terms",
+                    "privacy": "/legal/privacy"
+                },
             }
         ),
         403,
