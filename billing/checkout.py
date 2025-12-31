@@ -1,6 +1,6 @@
 # File: billing/checkout.py
 # Purpose: Stripe Checkout entrypoints (creates Checkout Sessions for subscriptions)
-# Imports: app.py expects: from billing.checkout import billing_bp
+# Import expectation (in app.py): from billing.checkout import billing_bp
 
 from __future__ import annotations
 
@@ -31,10 +31,6 @@ def _json_error(message: str, status: int = 400, **extra: Any) -> Tuple[Any, int
 
 
 def _stripe_client():
-    """
-    Lazy import so the module can be imported even if Stripe isn't installed yet
-    (but it should be installed via requirements.txt in production).
-    """
     try:
         import stripe  # type: ignore
     except Exception as e:
@@ -43,12 +39,12 @@ def _stripe_client():
     secret = _get_env("STRIPE_SECRET_KEY")
     if not secret:
         raise RuntimeError("Missing STRIPE_SECRET_KEY env var")
+
     stripe.api_key = secret
     return stripe
 
 
 def _base_url() -> str:
-    # Prefer explicit env base URL; fallback to request host.
     explicit = _get_env("APP_BASE_URL")
     if explicit:
         return explicit.rstrip("/")
@@ -56,12 +52,6 @@ def _base_url() -> str:
 
 
 def _extract_customer_id(data: Dict[str, Any]) -> Optional[str]:
-    """
-    Priority:
-      1) Header: X-Customer-Id
-      2) JSON:   customer_id
-      3) Query:  customer_id
-    """
     cid = request.headers.get("X-Customer-Id")
     if cid and cid.strip():
         return cid.strip()
@@ -84,23 +74,6 @@ def billing_health():
 
 @billing_bp.post("/checkout/session")
 def create_checkout_session():
-    """
-    Creates a Stripe Checkout Session for a recurring subscription.
-
-    Required env:
-      - STRIPE_SECRET_KEY
-      - STRIPE_PRICE_ID  (recurring price)
-
-    Optional env:
-      - APP_BASE_URL (e.g. https://freightpay.onrender.com)
-      - STRIPE_SUCCESS_URL (defaults to {APP_BASE_URL}/dashboard?checkout=success)
-      - STRIPE_CANCEL_URL  (defaults to {APP_BASE_URL}/billing?checkout=cancel)
-      - STRIPE_CHECKOUT_ALLOW_PROMO_CODES (1/true/yes to enable)
-      - STRIPE_CHECKOUT_AUTOMATIC_TAX (1/true/yes to enable)
-      - STRIPE_REQUIRE_BILLING_ADDRESS (1/true/yes to require billing address)
-      - STRIPE_TAX_ID_COLLECTION (1/true/yes to enable tax ID collection)
-      - STRIPE_CLIENT_REFERENCE_ID_FIELD (defaults to "customer_id")  # which field to pass into client_reference_id
-    """
     price_id = _get_env("STRIPE_PRICE_ID")
     if not price_id:
         return _json_error("Missing STRIPE_PRICE_ID env var", 500)
@@ -114,10 +87,8 @@ def create_checkout_session():
     customer_email = (data.get("email") or request.args.get("email") or "")
     customer_email = customer_email.strip() or None
 
-    # Support existing customer id when known (recommended for entitlement checks)
     customer_id = _extract_customer_id(data)
 
-    # URLs
     base = _base_url()
     success_url = _get_env("STRIPE_SUCCESS_URL", f"{base}/dashboard?checkout=success")
     cancel_url = _get_env("STRIPE_CANCEL_URL", f"{base}/billing?checkout=cancel")
@@ -127,13 +98,11 @@ def create_checkout_session():
     require_billing_address = _truthy(_get_env("STRIPE_REQUIRE_BILLING_ADDRESS", "0"))
     tax_id_collection = _truthy(_get_env("STRIPE_TAX_ID_COLLECTION", "0"))
 
-    # Optional metadata passthrough
     metadata_in = data.get("metadata")
     metadata: Optional[Dict[str, str]] = None
     if isinstance(metadata_in, dict):
         metadata = {str(k): str(v) for k, v in metadata_in.items()}
 
-    # Optional: client_reference_id (helps correlate app user -> Stripe checkout)
     cr_field = (_get_env("STRIPE_CLIENT_REFERENCE_ID_FIELD", "customer_id") or "customer_id").strip()
     client_reference_id = None
     if cr_field and isinstance(data.get(cr_field), (str, int)):
@@ -153,10 +122,8 @@ def create_checkout_session():
         }
 
         if customer_id:
-            # When you already have a Stripe Customer ID
             session_kwargs["customer"] = customer_id
         elif customer_email:
-            # Otherwise, Stripe can create a Customer behind the scenes
             session_kwargs["customer_email"] = customer_email
 
         if client_reference_id:
@@ -175,7 +142,6 @@ def create_checkout_session():
             session_kwargs["tax_id_collection"] = {"enabled": True}
 
         session = stripe.checkout.Session.create(**session_kwargs)
-
         return jsonify({"id": session.get("id"), "url": session.get("url")}), 200
 
     except Exception as e:
@@ -184,21 +150,6 @@ def create_checkout_session():
 
 @billing_bp.post("/checkout/session/one-time")
 def create_one_time_checkout_session():
-    """
-    One-time payment checkout.
-
-    Required env:
-      - STRIPE_SECRET_KEY
-      - STRIPE_ONE_TIME_PRICE_ID
-
-    Optional env:
-      - APP_BASE_URL
-      - STRIPE_SUCCESS_URL (defaults to {APP_BASE_URL}/dashboard?checkout=success)
-      - STRIPE_CANCEL_URL  (defaults to {APP_BASE_URL}/billing?checkout=cancel)
-      - STRIPE_CHECKOUT_AUTOMATIC_TAX (1/true/yes to enable)
-      - STRIPE_REQUIRE_BILLING_ADDRESS (1/true/yes to require billing address)
-      - STRIPE_TAX_ID_COLLECTION (1/true/yes to enable tax ID collection)
-    """
     price_id = _get_env("STRIPE_ONE_TIME_PRICE_ID")
     if not price_id:
         return _json_error("Missing STRIPE_ONE_TIME_PRICE_ID env var", 500)
@@ -255,7 +206,6 @@ def create_one_time_checkout_session():
             session_kwargs["tax_id_collection"] = {"enabled": True}
 
         session = stripe.checkout.Session.create(**session_kwargs)
-
         return jsonify({"id": session.get("id"), "url": session.get("url")}), 200
 
     except Exception as e:
@@ -263,6 +213,5 @@ def create_one_time_checkout_session():
 
 
 if __name__ == "__main__":
-    # Minimal import-time sanity checks
     assert billing_bp.name == "billing"
     print("billing/checkout.py OK")
