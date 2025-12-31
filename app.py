@@ -10,6 +10,7 @@ from payroll.routes.payroll_routes import payroll_bp
 from legal.routes.legal_routes import legal_bp
 from bookkeeping.routes import bookkeeping_bp
 from integrations.gusto.oauth import gusto_bp
+from users.routes import users_bp
 
 # Config
 from config import get_config
@@ -73,6 +74,7 @@ def create_app() -> Flask:
     app.register_blueprint(legal_bp)
     app.register_blueprint(bookkeeping_bp)
     app.register_blueprint(gusto_bp)
+    app.register_blueprint(users_bp)
 
     # Billing store
     from billing.store import store_bp
