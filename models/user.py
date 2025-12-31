@@ -38,6 +38,11 @@ class User(Base):
     role = Column(String(50), nullable=False, default="admin")  # admin, manager, viewer
     is_active = Column(Boolean, nullable=False, default=True)
 
+    # 🔐 Legal acceptance (required by utils/legal_guard.py)
+    accepted_tos = Column(Boolean, nullable=False, default=False)
+    accepted_privacy = Column(Boolean, nullable=False, default=False)
+    legal_accepted_at = Column(DateTime, nullable=True)
+
     created_at = Column(DateTime, nullable=False, default=datetime.utcnow)
     updated_at = Column(
         DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
