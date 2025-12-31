@@ -11,6 +11,7 @@ from legal.routes.legal_routes import legal_bp
 from bookkeeping.routes import bookkeeping_bp
 from integrations.gusto.oauth import gusto_bp
 from users.routes import users_bp
+from utils.database import init_db
 
 # Config
 from config import get_config
@@ -21,6 +22,7 @@ from utils.legal_guard import enforce_legal_acceptance
 
 def create_app() -> Flask:
     app = Flask(__name__)
+init_db(app)
 
     # Load config
     app.config.from_object(get_config())
