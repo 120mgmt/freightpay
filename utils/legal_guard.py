@@ -33,11 +33,15 @@ def enforce_legal_acceptance():
 
     # Always-allowed routes
     if (
-        path == "/health"
+        path == "/"
+        or path == "/health"
         or path == "/legal/terms"
         or path == "/legal/privacy"
+        or path == "/legal/refund"
         or path == "/legal/accept"
         or path.startswith("/static/")
+        or path.startswith("/billing/webhook")
+        or path.startswith("/webhook")
         or request.method == "OPTIONS"
     ):
         return None
@@ -59,13 +63,11 @@ def enforce_legal_acceptance():
             {
                 "error": "LEGAL_NOT_ACCEPTED",
                 "message": "You must accept the Terms of Service and Privacy Policy to continue.",
-                "required": {
-                    "tos": True,
-                    "privacy": True
-                },
+                "required": {"tos": True, "privacy": True},
                 "docs": {
                     "terms": "/legal/terms",
-                    "privacy": "/legal/privacy"
+                    "privacy": "/legal/privacy",
+                    "refund": "/legal/refund",
                 },
             }
         ),
