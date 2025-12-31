@@ -2,7 +2,7 @@
 
 from flask import Flask, jsonify, request
 
-# Blueprint imports (must exist exactly as named)
+# Blueprint imports
 from billing.checkout import billing_bp
 from billing.customer_portal import portal_bp
 from billing.webhooks import webhook_bp
@@ -36,12 +36,13 @@ def create_app() -> Flask:
                 "legal": {
                     "terms": "/legal/terms",
                     "privacy": "/legal/privacy",
+                    "refund": "/legal/refund",
                     "accept": "/legal/accept",
                 },
             }
         ), 200
 
-    # Health check (Render requires this)
+    # Health check (Render)
     @app.route("/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok"}), 200
@@ -51,7 +52,7 @@ def create_app() -> Flask:
     def legal_guard():
         path = request.path or ""
 
-        # Always allow public + infra routes
+        # Always allow public / infra routes
         if (
             path == "/"
             or path.startswith("/health")
@@ -73,7 +74,7 @@ def create_app() -> Flask:
     app.register_blueprint(bookkeeping_bp)
     app.register_blueprint(gusto_bp)
 
-    # Billing store (customer portal / subscription status)
+    # Billing store
     from billing.store import store_bp
     app.register_blueprint(store_bp)
 
