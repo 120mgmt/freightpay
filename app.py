@@ -25,23 +25,42 @@ def create_app() -> Flask:
     app.config.from_object(get_config())
     app.config["JSON_SORT_KEYS"] = False
 
+    # Root index (prevents blank page)
+    @app.route("/", methods=["GET"])
+    def index():
+        return jsonify(
+            {
+                "app": "FreightPay",
+                "status": "live",
+                "health": "/health",
+                "legal": {
+                    "terms": "/legal/terms",
+                    "privacy": "/legal/privacy",
+                    "accept": "/legal/accept",
+                },
+            }
+        ), 200
+
     # Health check (Render requires this)
     @app.route("/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok"}), 200
 
-    # Enforce legal acceptance globally (runs before every request)
+    # Enforce legal acceptance globally
     @app.before_request
     def legal_guard():
-        # Never block health / static / legal pages / webhooks
         path = request.path or ""
-        if path.startswith("/health"):
-            return None
-        if path.startswith("/legal"):
-            return None
-        if path.startswith("/static"):
-            return None
-        if path.startswith("/billing/webhook") or path.startswith("/webhook"):
+
+        # Always allow public + infra routes
+        if (
+            path == "/"
+            or path.startswith("/health")
+            or path.startswith("/legal")
+            or path.startswith("/static")
+            or path.startswith("/billing/webhook")
+            or path.startswith("/webhook")
+            or request.method == "OPTIONS"
+        ):
             return None
 
         return enforce_legal_acceptance()
@@ -54,10 +73,11 @@ def create_app() -> Flask:
     app.register_blueprint(bookkeeping_bp)
     app.register_blueprint(gusto_bp)
 
-    # Optional: billing store blueprint (if present)
+    # Billing store (customer portal / subscription status)
     from billing.store import store_bp
     app.register_blueprint(store_bp)
 
+    # Stripe webhooks LAST
     app.register_blueprint(webhook_bp)
 
     return app
