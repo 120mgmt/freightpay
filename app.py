@@ -1,8 +1,9 @@
 # freightpay/app.py
+# V5 PRODUCTION – FULL DEPLOYMENT ENTRYPOINT
 
 from flask import Flask, jsonify, request
 
-# Blueprint imports
+# Blueprints
 from billing.checkout import billing_bp
 from billing.customer_portal import portal_bp
 from billing.webhooks import webhook_bp
@@ -12,26 +13,31 @@ from bookkeeping.routes import bookkeeping_bp
 from integrations.gusto.oauth import gusto_bp
 from users.routes import users_bp
 
+# Core config & DB
+from config import get_config
 from utils.database import init_db
 
-# Config
-from config import get_config
-
-# Legal enforcement
+# Guards
 from utils.legal_guard import enforce_legal_acceptance
 
 
 def create_app() -> Flask:
     app = Flask(__name__)
 
-    # Load config
+    # -----------------------
+    # CONFIG
+    # -----------------------
     app.config.from_object(get_config())
     app.config["JSON_SORT_KEYS"] = False
 
-    # DB session teardown hook
+    # -----------------------
+    # DATABASE LIFECYCLE
+    # -----------------------
     init_db(app)
 
-    # Root index
+    # -----------------------
+    # ROOT / HEALTH
+    # -----------------------
     @app.route("/", methods=["GET"])
     def index():
         return jsonify(
@@ -48,15 +54,17 @@ def create_app() -> Flask:
             }
         ), 200
 
-    # Health check
     @app.route("/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok"}), 200
 
-    # Legal enforcement
+    # -----------------------
+    # GLOBAL LEGAL ENFORCEMENT
+    # -----------------------
     @app.before_request
     def legal_guard():
         path = request.path or ""
+
         if (
             path == "/"
             or path.startswith("/health")
@@ -67,24 +75,31 @@ def create_app() -> Flask:
             or request.method == "OPTIONS"
         ):
             return None
+
         return enforce_legal_acceptance()
 
-    # Blueprints
+    # -----------------------
+    # BLUEPRINT REGISTRATION
+    # -----------------------
+    app.register_blueprint(users_bp)
     app.register_blueprint(payroll_bp)
     app.register_blueprint(billing_bp)
     app.register_blueprint(portal_bp)
     app.register_blueprint(legal_bp)
     app.register_blueprint(bookkeeping_bp)
     app.register_blueprint(gusto_bp)
-    app.register_blueprint(users_bp)
 
+    # Billing store (subscriptions / status)
     from billing.store import store_bp
     app.register_blueprint(store_bp)
 
+    # Stripe webhooks MUST be last
     app.register_blueprint(webhook_bp)
 
     return app
 
 
-# ✅ Gunicorn entrypoint (ONLY once)
+# -----------------------
+# GUNICORN ENTRYPOINT
+# -----------------------
 app = create_app()
