@@ -1,5 +1,5 @@
 # File: billing/webhooks.py
-# Purpose: Stripe webhook receiver with idempotency + entitlement persistence (FULL PRODUCTION)
+# Purpose: Stripe webhook receiver with signature verification + entitlement persistence (production)
 
 from __future__ import annotations
 
@@ -10,13 +10,16 @@ from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, Response, jsonify, request
 
+# IMPORTANT:
+# - app.py imports: from billing.webhooks import webhook_bp
+# - This module must therefore expose: webhook_bp
+
 webhooks_bp = Blueprint("stripe_webhooks", __name__, url_prefix="/billing")
 
 
-# -------------------------------------------------------------------
+# -----------------------------
 # ENV / HELPERS
-# -------------------------------------------------------------------
-
+# -----------------------------
 def _env(name: str, default: Optional[str] = None) -> Optional[str]:
     v = os.getenv(name, default)
     if v is None:
@@ -49,10 +52,9 @@ def _now() -> int:
     return int(time.time())
 
 
-# -------------------------------------------------------------------
+# -----------------------------
 # STRIPE OBJECT HELPERS
-# -------------------------------------------------------------------
-
+# -----------------------------
 def _event_object(event: Dict[str, Any]) -> Dict[str, Any]:
     return event.get("data", {}).get("object") or {}
 
@@ -68,7 +70,7 @@ def _sub_customer_id(sub: Dict[str, Any]) -> Optional[str]:
 
 def _sub_price_id(sub: Dict[str, Any]) -> Optional[str]:
     try:
-        items = sub.get("items", {}).get("data", [])
+        items = (sub.get("items") or {}).get("data") or []
         if not items:
             return None
         price = items[0].get("price") or {}
@@ -82,11 +84,20 @@ def _is_active(status: str) -> bool:
     return status in {"active", "trialing"}
 
 
-# -------------------------------------------------------------------
+# -----------------------------
 # ENTITLEMENT APPLY (PERSISTED)
-# -------------------------------------------------------------------
-
+# -----------------------------
 def _apply_entitlements(customer_id: str, status: str, price_id: Optional[str]) -> None:
+    """
+    Persists customer subscription state + entitlements.
+
+    Requires:
+      - billing/entitlement.py:
+          entitlements_from_stripe_price_id(price_id) -> entitlements
+          entitlements_to_dict(entitlements) -> dict
+      - billing/entitlement_store.py:
+          upsert_customer_subscription(customer_id, active, status, price_id, entitlements, updated_at)
+    """
     from billing.entitlement import entitlements_from_stripe_price_id, entitlements_to_dict
     from billing.entitlement_store import upsert_customer_subscription
 
@@ -103,19 +114,17 @@ def _apply_entitlements(customer_id: str, status: str, price_id: Optional[str]) 
     )
 
 
-# -------------------------------------------------------------------
+# -----------------------------
 # HEALTH
-# -------------------------------------------------------------------
-
+# -----------------------------
 @webhooks_bp.get("/webhooks/health")
 def webhook_health() -> Tuple[Response, int]:
     return jsonify({"status": "ok"}), 200
 
 
-# -------------------------------------------------------------------
+# -----------------------------
 # STRIPE WEBHOOK
-# -------------------------------------------------------------------
-
+# -----------------------------
 @webhooks_bp.post("/webhooks/stripe")
 def stripe_webhook() -> Tuple[Response, int]:
     secret = _webhook_secret()
@@ -130,6 +139,7 @@ def stripe_webhook() -> Tuple[Response, int]:
     try:
         stripe = _stripe()
         event = stripe.Webhook.construct_event(payload, sig, secret)
+        # Normalize to dict
         event = event if isinstance(event, dict) else json.loads(json.dumps(event))
     except Exception as e:
         return _json_error("Webhook signature verification failed", 400, detail=str(e))
@@ -149,7 +159,7 @@ def stripe_webhook() -> Tuple[Response, int]:
 
             return jsonify({"received": True, "type": event_type}), 200
 
-        # Checkout completed → fetch subscription
+        # Checkout completed → fetch subscription, apply entitlements
         if event_type in {
             "checkout.session.completed",
             "checkout.session.async_payment_succeeded",
@@ -157,9 +167,9 @@ def stripe_webhook() -> Tuple[Response, int]:
             customer_id = obj.get("customer")
             sub_id = obj.get("subscription")
 
-            if isinstance(customer_id, str) and isinstance(sub_id, str):
+            if isinstance(customer_id, str) and customer_id.strip() and isinstance(sub_id, str) and sub_id.strip():
                 stripe = _stripe()
-                sub = stripe.Subscription.retrieve(sub_id)
+                sub = stripe.Subscription.retrieve(sub_id.strip())
                 sub = sub if isinstance(sub, dict) else json.loads(json.dumps(sub))
 
                 _apply_entitlements(
@@ -170,28 +180,26 @@ def stripe_webhook() -> Tuple[Response, int]:
 
             return jsonify({"received": True, "type": event_type}), 200
 
-        # Ignore everything else
+        # Ignore everything else (still 200 to avoid retries)
         return jsonify({"received": True, "type": event_type, "ignored": True}), 200
 
     except Exception as e:
-        # Never trigger Stripe retries
-        return (
-            jsonify(
-                {
-                    "received": True,
-                    "type": event_type,
-                    "handled_with_error": True,
-                    "detail": str(e),
-                }
-            ),
-            200,
-        )
+        # Never trigger Stripe retries; return 200 but record error
+        return jsonify(
+            {
+                "received": True,
+                "type": event_type,
+                "handled_with_error": True,
+                "detail": str(e),
+            }
+        ), 200
+
+
+# Alias expected by app.py
+webhook_bp = webhooks_bp
 
 
 if __name__ == "__main__":
-    assert webhooks_bp.name == "stripe_webhooks"
+    assert webhook_bp.name == "stripe_webhooks"
     print("billing/webhooks.py OK")
 
-
-# Backward-compatible export name used by app.py
-webhook_bp = webhooks_bp
