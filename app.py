@@ -1,7 +1,7 @@
 # app.py
 # FreightPay – Full Production Deployment v5
 # Date: 2026-01-01
-# Status: Production-ready
+# Status: Production-ready (Stripe price_id based)
 
 import os
 from datetime import datetime
@@ -18,39 +18,70 @@ CORS(app)
 # =========================
 # Environment Variables
 # =========================
-STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
-STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 APP_ENV = os.getenv("APP_ENV", "production")
 BASE_URL = os.getenv("BASE_URL", "https://freightpay.onrender.com")
 
+STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
+
+# Saved Stripe Price IDs (from your Render env screenshot)
+STRIPE_BOOKKEEPING_PRICE_ID = os.getenv("STRIPE_BOOKKEEPING_PRICE_ID")
+STRIPE_COMBO_PRICE_ID = os.getenv("STRIPE_COMBO_PRICE_ID")
+STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID = os.getenv("STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID")
+STRIPE_PAYROLL_PRICE_ID = os.getenv("STRIPE_PAYROLL_PRICE_ID")
+STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID = os.getenv("STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID")
+
 if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
-    raise RuntimeError("Stripe environment variables are missing")
+    raise RuntimeError("Missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
+
+def _require(value: str | None, key: str) -> str:
+    if not value or not value.strip():
+        raise RuntimeError(f"Missing required env var: {key}")
+    return value.strip()
+
+
+def _safe_int(v, default=0) -> int:
+    try:
+        i = int(v)
+        return i if i >= 0 else default
+    except Exception:
+        return default
+
+
 # =========================
-# PRICING – CORRECTED (FINAL)
+# Pricing Map (Price IDs)
 # =========================
+# Combo: base + per-employee
+# Payroll only: base + per-employee
+# Bookkeeping only: base only
 PRICING = {
     "combo": {
         "name": "Payroll + Bookkeeping",
-        "base_price_cents": 9900,      # $99.00
-        "per_employee_cents": 600,     # $6.00 per employee
-        "currency": "usd"
+        "base_price_id": STRIPE_COMBO_PRICE_ID,
+        "per_employee_price_id": STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID,
     },
     "payroll_only": {
         "name": "Payroll Only",
-        "base_price_cents": 4900,      # $49.00
-        "per_employee_cents": 800,     # $8.00 per employee
-        "currency": "usd"
+        "base_price_id": STRIPE_PAYROLL_PRICE_ID,
+        "per_employee_price_id": STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID,
     },
     "bookkeeping_only": {
         "name": "Bookkeeping Only",
-        "base_price_cents": 6900,      # $69.00
-        "per_employee_cents": 0,       # no per-employee charge
-        "currency": "usd"
-    }
+        "base_price_id": STRIPE_BOOKKEEPING_PRICE_ID,
+        "per_employee_price_id": None,
+    },
 }
+
+# Validate required env vars for plans you intend to sell
+_require(PRICING["combo"]["base_price_id"], "STRIPE_COMBO_PRICE_ID")
+_require(PRICING["combo"]["per_employee_price_id"], "STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID")
+_require(PRICING["payroll_only"]["base_price_id"], "STRIPE_PAYROLL_PRICE_ID")
+_require(PRICING["payroll_only"]["per_employee_price_id"], "STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID")
+_require(PRICING["bookkeeping_only"]["base_price_id"], "STRIPE_BOOKKEEPING_PRICE_ID")
+
 
 # =========================
 # Health Check
@@ -63,44 +94,45 @@ def health():
         "timestamp": datetime.utcnow().isoformat()
     })
 
+
 # =========================
-# Stripe Checkout
+# Stripe Checkout (Subscription)
 # =========================
 @app.route("/billing/checkout", methods=["POST"])
 def create_checkout():
     data = request.json or {}
-    plan_key = data.get("plan")
-    employees = int(data.get("employees", 0))
+    plan_key = (data.get("plan") or "").strip()
+    employees = _safe_int(data.get("employees", 0), default=0)
 
     if plan_key not in PRICING:
         return jsonify({"error": "Invalid plan"}), 400
 
     plan = PRICING[plan_key]
-    total_cents = plan["base_price_cents"] + (
-        plan["per_employee_cents"] * employees
-    )
+    base_price_id = _require(plan["base_price_id"], f"{plan_key}.base_price_id")
+
+    line_items = [
+        {"price": base_price_id, "quantity": 1}
+    ]
+
+    # Add per-employee line item if plan uses it and employees > 0
+    per_emp_price_id = plan.get("per_employee_price_id")
+    if per_emp_price_id and employees > 0:
+        line_items.append({"price": _require(per_emp_price_id, f"{plan_key}.per_employee_price_id"), "quantity": employees})
 
     session = stripe.checkout.Session.create(
         mode="subscription",
         payment_method_types=["card"],
-        line_items=[{
-            "price_data": {
-                "currency": plan["currency"],
-                "product_data": {"name": plan["name"]},
-                "unit_amount": total_cents,
-                "recurring": {"interval": "month"}
-            },
-            "quantity": 1
-        }],
-        success_url=f"{BASE_URL}/billing/success",
+        line_items=line_items,
+        success_url=f"{BASE_URL}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{BASE_URL}/billing/cancel",
         metadata={
             "plan": plan_key,
-            "employees": employees
+            "employees": str(employees),
         }
     )
 
     return jsonify({"checkout_url": session.url})
+
 
 # =========================
 # Stripe Webhook
@@ -110,14 +142,34 @@ def stripe_webhook():
     payload = request.data
     sig_header = request.headers.get("Stripe-Signature")
 
-    event = stripe.Webhook.construct_event(
-        payload, sig_header, STRIPE_WEBHOOK_SECRET
-    )
+    try:
+        event = stripe.Webhook.construct_event(
+            payload, sig_header, STRIPE_WEBHOOK_SECRET
+        )
+    except Exception:
+        return jsonify({"error": "Webhook signature verification failed"}), 400
 
-    if event["type"] == "checkout.session.completed":
-        print("Checkout completed:", event["data"]["object"]["id"])
+    event_type = event.get("type")
+    obj = (event.get("data") or {}).get("object") or {}
+
+    if event_type == "checkout.session.completed":
+        # In production you persist customer/subscription/entitlements here
+        print("checkout.session.completed:", obj.get("id"))
+
+    elif event_type == "customer.subscription.created":
+        print("customer.subscription.created:", obj.get("id"))
+
+    elif event_type == "customer.subscription.updated":
+        print("customer.subscription.updated:", obj.get("id"))
+
+    elif event_type == "customer.subscription.deleted":
+        print("customer.subscription.deleted:", obj.get("id"))
+
+    elif event_type == "invoice.payment_failed":
+        print("invoice.payment_failed:", obj.get("id"))
 
     return jsonify({"received": True})
+
 
 # =========================
 # Legal (Required)
@@ -134,6 +186,7 @@ def privacy():
 def refund():
     return jsonify({"refund": "FreightPay Refund Policy"})
 
+
 # =========================
 # Root
 # =========================
@@ -144,6 +197,7 @@ def index():
         "version": "v5-production",
         "status": "live"
     })
+
 
 # =========================
 # Entry
