@@ -175,13 +175,23 @@ def stripe_webhook() -> Tuple[Response, int]:
 
     except Exception as e:
         # Never trigger Stripe retries
-        return jsonify(
-            {"received": True, "type": event_type, "handled_with_error": True, "detail": str(e)}
-        ), 200
+        return (
+            jsonify(
+                {
+                    "received": True,
+                    "type": event_type,
+                    "handled_with_error": True,
+                    "detail": str(e),
+                }
+            ),
+            200,
+        )
 
 
 if __name__ == "__main__":
     assert webhooks_bp.name == "stripe_webhooks"
     print("billing/webhooks.py OK")
 
+
+# Backward-compatible export name used by app.py
 webhook_bp = webhooks_bp
