@@ -1,69 +1,83 @@
-# File: billing/customer_portal.py
-# Purpose: Stripe Customer Portal access for existing subscribers
-# Imported by app.py as: from billing.customer_portal import portal_bp
+# billing/customer_portal.py
 
 from __future__ import annotations
 
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Tuple
 
 from flask import Blueprint, jsonify, request
 
-from billing.store import get_customer, init_billing_db
-from billing.stripe_client import init_stripe
 
-import stripe  # must be installed in production
+portal_bp = Blueprint("portal", __name__, url_prefix="/billing/portal")
 
 
-portal_bp = Blueprint("billing_portal_v1", __name__, url_prefix="/billing")
+def _json_error(message: str, status: int = 400, **extra: Any) -> Tuple[Any, int]:
+    payload: Dict[str, Any] = {"error": message}
+    payload.update(extra)
+    return jsonify(payload), status
 
-# Ensure billing storage + Stripe are initialized once at import
-init_billing_db()
-init_stripe()
+
+def _stripe_client():
+    try:
+        import stripe  # type: ignore
+    except Exception as e:
+        raise RuntimeError(f"Stripe library not available: {e}") from e
+
+    secret = os.getenv("STRIPE_SECRET_KEY")
+    if not secret:
+        raise RuntimeError("Missing STRIPE_SECRET_KEY env var")
+
+    stripe.api_key = secret
+    return stripe
 
 
-def _company_id() -> str:
+@portal_bp.post("/session")
+def create_customer_portal_session():
     """
-    Resolve company identifier.
-    Priority:
-      1. X-Company-Id header
-      2. DEFAULT_COMPANY_ID env
+    Creates a Stripe Customer Portal session so customers can:
+    - Manage subscription
+    - Update payment method
+    - View invoices
+
+    Required:
+      - STRIPE_SECRET_KEY
+      - customer_id (Stripe customer ID)
+
+    Input:
+      Header OR JSON:
+        customer_id
     """
-    return (
-        request.headers.get("X-Company-Id")
-        or os.getenv("DEFAULT_COMPANY_ID", "default")
-    ).strip()
 
+    data = request.get_json(silent=True) or {}
 
-@portal_bp.post("/portal/session")
-def create_portal_session():
-    """
-    POST /billing/portal/session
+    customer_id = (
+        request.headers.get("X-Customer-Id")
+        or data.get("customer_id")
+        or request.args.get("customer_id")
+    )
 
-    Body:
-      {
-        "return_url": "https://app.example.com/dashboard"
-      }
-
-    Requires:
-      - Existing Stripe customer mapped to company
-      - STRIPE_SECRET_KEY env (handled in stripe_client)
-    """
-    data: Dict[str, Any] = request.get_json(silent=True) or {}
-    return_url = (data.get("return_url") or "").strip()
-
-    if not return_url:
-        return jsonify({"error": "return_url required"}), 400
-
-    cust = get_customer(_company_id())
-    if not cust:
-        return jsonify({"error": "customer not found"}), 404
+    if not customer_id:
+        return _json_error("Missing customer_id", 400)
 
     try:
+        stripe = _stripe_client()
+
+        return_url = os.getenv(
+            "STRIPE_PORTAL_RETURN_URL",
+            request.host_url.rstrip("/") + "/dashboard",
+        )
+
         session = stripe.billing_portal.Session.create(
-            customer=cust["stripe_customer_id"],
+            customer=customer_id,
             return_url=return_url,
         )
-        return jsonify({"portal_url": session.url}), 200
+
+        return jsonify({"url": session.get("url")}), 200
+
     except Exception as e:
-        return jsonify({"error": "failed to create portal session", "detail": str(e)}), 500
+        return _json_error("Failed to create portal session", 500, detail=str(e))
+
+
+if __name__ == "__main__":
+    assert portal_bp.name == "portal"
+    print("billing/customer_portal.py OK")
