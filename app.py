@@ -31,7 +31,7 @@ def create_app() -> Flask:
     # DB session teardown hook
     init_db(app)
 
-    # Root index (prevents blank page)
+    # Root index
     @app.route("/", methods=["GET"])
     def index():
         return jsonify(
@@ -48,17 +48,15 @@ def create_app() -> Flask:
             }
         ), 200
 
-    # Health check (Render)
+    # Health check
     @app.route("/health", methods=["GET"])
     def health():
         return jsonify({"status": "ok"}), 200
 
-    # Enforce legal acceptance globally
+    # Legal enforcement
     @app.before_request
     def legal_guard():
         path = request.path or ""
-
-        # Always allow public / infra routes
         if (
             path == "/"
             or path.startswith("/health")
@@ -69,10 +67,9 @@ def create_app() -> Flask:
             or request.method == "OPTIONS"
         ):
             return None
-
         return enforce_legal_acceptance()
 
-    # Blueprint registry (order matters: webhooks last)
+    # Blueprints
     app.register_blueprint(payroll_bp)
     app.register_blueprint(billing_bp)
     app.register_blueprint(portal_bp)
@@ -81,16 +78,13 @@ def create_app() -> Flask:
     app.register_blueprint(gusto_bp)
     app.register_blueprint(users_bp)
 
-    # Billing store
     from billing.store import store_bp
     app.register_blueprint(store_bp)
 
-    # Stripe webhooks LAST
     app.register_blueprint(webhook_bp)
 
     return app
 
 
-# Gunicorn entrypoint
+# ✅ Gunicorn entrypoint (ONLY once)
 app = create_app()
-create_app()
