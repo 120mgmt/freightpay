@@ -1,4 +1,6 @@
 # freightpay/users/routes.py
+# Purpose: User auth + registration routes (deployment-ready)
+# Status: Production-ready v5
 
 from __future__ import annotations
 
@@ -15,6 +17,7 @@ users_bp = Blueprint("users", __name__, url_prefix="/users")
 @users_bp.post("/login")
 def login():
     data = request.get_json(silent=True) or {}
+
     email = (data.get("email") or "").strip().lower()
     password = data.get("password") or ""
 
@@ -22,7 +25,7 @@ def login():
         return jsonify({"error": "EMAIL_AND_PASSWORD_REQUIRED"}), 400
 
     token, user = login_user(email=email, password=password)
-    if not token or not user:
+    if not token or not user or not user.is_active:
         return jsonify({"error": "INVALID_CREDENTIALS"}), 401
 
     return jsonify(
@@ -59,7 +62,7 @@ def register():
 
     company = Company(name=company_name)
     db.add(company)
-    db.flush()
+    db.flush()  # ensures company.id is available
 
     user = User(
         company_id=company.id,
@@ -67,6 +70,7 @@ def register():
         first_name=first_name,
         last_name=last_name,
         role="admin",
+        is_active=True,
     )
     user.set_password(password)
 
