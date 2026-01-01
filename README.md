@@ -1,31 +1,37 @@
-# FreightPay – Full Production Deployment (v5)
+# LedgerHaul — Production Backend Service
 
-FreightPay is a **production-grade SaaS platform** for trucking and logistics operators.  
-This repository is **not an MVP, not a demo, and not a skeleton**. It is structured for **live users, paid subscriptions, and production operations**.
+LedgerHaul is a production backend service for payroll, contractor settlements, and subscription management in the trucking and logistics industry.
+
+Public informational site: https://ledgerhaul.com
 
 ---
 
-## Platform Capabilities (Production)
+## Overview
+
+LedgerHaul provides programmatic payroll calculations, contractor settlement logic, billing enforcement, and third-party integrations. The application is API-first and designed to operate as a live backend service supporting paid subscriptions and operational workflows.
+
+---
+
+## Core Capabilities
 
 ### Authentication & Authorization
-- User registration, login, logout
-- Role-based access control: `admin`, `client`, `driver`
-- Session-based authentication and JWT support
-- Enforced permissions at route and service level
+- User registration and login
+- Role-based access control (`admin`, `client`, `driver`)
+- Session-based authentication
+- Route-level permission enforcement
 
 ### Database & Persistence
 - PostgreSQL (Render) with SQLite fallback for local development
 - SQLAlchemy ORM
 - Alembic / Flask-Migrate migrations
-- Seeded baseline data
 - Production-safe connection handling
 
-### Billing & Subscriptions (Stripe – Live Mode)
-- Subscription billing using **Stripe Price IDs (environment-driven)**
+### Billing & Subscriptions (Stripe)
+- Subscription billing using environment-driven Stripe Price IDs
 - Supported plans:
-  - **Combo** (Payroll + Bookkeeping): base + per-employee
-  - **Payroll Only**: base + per-employee
-  - **Bookkeeping Only**: flat-rate
+  - Combo (Payroll + Bookkeeping): base + per-employee
+  - Payroll Only: base + per-employee
+  - Bookkeeping Only: flat-rate
 - Stripe Checkout (subscription mode)
 - Webhook handling:
   - `checkout.session.completed`
@@ -35,11 +41,21 @@ This repository is **not an MVP, not a demo, and not a skeleton**. It is structu
   - `invoice.payment_failed`
 - Subscription state persisted and enforced via entitlements
 
+### Contractor Payroll Engine
+- Per-mile pay (simple and split loaded/empty miles)
+- Flat-rate pay
+- Percentage-of-revenue pay
+- Accessorials (detention, layover, TONU, etc.)
+- Deductions (escrow, fuel advances, insurance, admin fees)
+- Gross-to-net settlement calculations
+- Audit-safe line item tracking
+
 ### Gusto Integration
 - OAuth connect endpoint
 - OAuth callback with token exchange
-- Secure token storage in database
-- Structured for production payroll scopes (partner approval required)
+- Secure token handling
+- Demo environment active
+- Structured for production payroll scopes pending partner approval
 
 ### Entitlements & Access Control
 - Active subscription required for feature access
@@ -50,39 +66,25 @@ This repository is **not an MVP, not a demo, and not a skeleton**. It is structu
 - Terms of Service endpoint
 - Privacy Policy endpoint
 - Refund Policy endpoint
-- Designed for production compliance and third-party review
-
-### User Interface
-- Server-rendered UI (Jinja templates)
-- Home, login, register
-- Client dashboard
-- Admin dashboard
-- Billing-aware UI states
-
-### Deployment & Runtime
-- Python **3.12.1**
-- Gunicorn application server
-- Render-compatible
-- 12-factor, environment-variable–driven configuration
+- Structured for third-party review
 
 ---
 
-## What This Repository Is NOT
-- Not an MVP
-- Not a prototype
-- Not a demo
-- Not hardcoded pricing or secrets
-- Not missing core infrastructure
+## Architecture
+
+- **Language:** Python 3.12.x
+- **Framework:** Flask
+- **Payments:** Stripe
+- **Payroll Provider:** Gusto API
+- **Hosting:** Render
+- **Database:** PostgreSQL / SQLite
+- **Auth:** OAuth 2.0
+- **Webhooks:** Stripe + Gusto
+- **Server:** Gunicorn
 
 ---
 
-## Local Setup (Production-Equivalent)
+## Environment Variables
 
-```bash
-python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-cp .env.example .env
-flask --app freightpay:create_app db upgrade
-flask --app freightpay:create_app seed
-flask --app freightpay:create_app run
+Create a `.env` file locally (do not commit secrets):
+
