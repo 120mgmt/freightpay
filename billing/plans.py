@@ -1,5 +1,7 @@
 # File: billing/plans.py
-# Purpose: Load subscription plans (code/name/Stripe price_id) from env (no hardcoding)
+# Purpose: Load subscription + per-employee Stripe price IDs from env (no hardcoding)
+# Date: 2026-01-01
+# Status: Production-ready v5 (matches current Render env vars)
 
 from __future__ import annotations
 
@@ -12,56 +14,49 @@ from typing import Dict, Optional
 class Plan:
     code: str
     name: str
-    price_id: str
+    base_price_id: str
+    per_employee_price_id: Optional[str] = None
 
 
-def _env_first(*keys: str) -> Optional[str]:
-    for k in keys:
-        v = os.getenv(k)
-        if v is None:
-            continue
-        v = v.strip()
-        if v:
-            return v
-    return None
+def _env(key: str) -> str:
+    v = os.getenv(key)
+    if not v or not v.strip():
+        raise RuntimeError(f"Missing required env var: {key}")
+    return v.strip()
 
 
 def load_plans() -> Dict[str, Plan]:
     """
-    Production rule: plans MUST come from env price IDs (no hardcoding).
-
-    Supported env var names (accepts either style):
-      - STRIPE_PRICE_ID_STARTER / STRIPE_PRICE_ID_PRO / STRIPE_PRICE_ID_ENTERPRISE
-      - STRIPE_PRICE_STARTER / STRIPE_PRICE_GROWTH / STRIPE_PRICE_ENTERPRISE
-
-    Returns:
-      Dict[str, Plan] where keys are plan codes. For compatibility, if a PRO price exists
-      we also expose "growth" as an alias (and vice-versa).
+    Production rule:
+    - ALL Stripe prices come from env
+    - Base subscription price + optional per-employee price
+    - Matches Render env exactly
     """
-    starter = _env_first("STRIPE_PRICE_ID_STARTER", "STRIPE_PRICE_STARTER")
-    pro = _env_first("STRIPE_PRICE_ID_PRO", "STRIPE_PRICE_GROWTH")
-    enterprise = _env_first("STRIPE_PRICE_ID_ENTERPRISE", "STRIPE_PRICE_ENTERPRISE")
-
-    if not starter or not pro:
-        raise RuntimeError(
-            "Missing required Stripe plan env vars. Provide either:\n"
-            "- STRIPE_PRICE_ID_STARTER and STRIPE_PRICE_ID_PRO\n"
-            "  (optional: STRIPE_PRICE_ID_ENTERPRISE)\n"
-            "OR\n"
-            "- STRIPE_PRICE_STARTER and STRIPE_PRICE_GROWTH\n"
-            "  (optional: STRIPE_PRICE_ENTERPRISE)"
-        )
 
     plans: Dict[str, Plan] = {}
 
-    # Primary canonical codes used by entitlement mapping
-    plans["starter"] = Plan(code="starter", name="Starter", price_id=starter)
-    plans["pro"] = Plan(code="pro", name="Pro", price_id=pro)
+    # Combo: $99 base + $6 / employee
+    plans["combo"] = Plan(
+        code="combo",
+        name="Payroll + Bookkeeping",
+        base_price_id=_env("STRIPE_COMBO_PRICE_ID"),
+        per_employee_price_id=_env("STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID"),
+    )
 
-    # Back-compat alias if any older code expects "growth"
-    plans["growth"] = Plan(code="growth", name="Growth", price_id=pro)
+    # Payroll only: $49 base + $8 / employee
+    plans["payroll_only"] = Plan(
+        code="payroll_only",
+        name="Payroll Only",
+        base_price_id=_env("STRIPE_PAYROLL_PRICE_ID"),
+        per_employee_price_id=_env("STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID"),
+    )
 
-    if enterprise:
-        plans["enterprise"] = Plan(code="enterprise", name="Enterprise", price_id=enterprise)
+    # Bookkeeping only: $69 flat
+    plans["bookkeeping_only"] = Plan(
+        code="bookkeeping_only",
+        name="Bookkeeping Only",
+        base_price_id=_env("STRIPE_BOOKKEEPING_PRICE_ID"),
+        per_employee_price_id=None,
+    )
 
     return plans
