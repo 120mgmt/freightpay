@@ -1,7 +1,4 @@
-# app.py
-# FreightPay – Full Production Deployment v5
-# Date: 2026-01-03
-# Status: Production-ready (Stripe price_id based + DB wired)
+# app.py  (FULL FILE — DB WIRED + psycopg3 compatible)
 
 import os
 from datetime import datetime
@@ -11,7 +8,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import stripe
 
-from db import init_db  # db.py at repo root; adjust if different
+from db import init_db, db  # db.py at repo root
 
 # =========================
 # Database URL check (SAFE)
@@ -39,7 +36,7 @@ if DATABASE_URL:
 app = Flask(__name__)
 CORS(app)
 
-# Wire DB + migrations (must be after app creation)
+# Wire DB + migrations
 init_db(app)
 
 # =========================
@@ -51,7 +48,6 @@ BASE_URL = os.getenv("BASE_URL", "https://api.ledgerhaul.com")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-# Saved Stripe Price IDs
 STRIPE_BOOKKEEPING_PRICE_ID = os.getenv("STRIPE_BOOKKEEPING_PRICE_ID")
 STRIPE_COMBO_PRICE_ID = os.getenv("STRIPE_COMBO_PRICE_ID")
 STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID = os.getenv("STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID")
@@ -78,9 +74,6 @@ def _safe_int(v, default=0) -> int:
         return default
 
 
-# =========================
-# Pricing Map (Price IDs)
-# =========================
 PRICING = {
     "combo": {
         "name": "Payroll + Bookkeeping",
@@ -106,9 +99,6 @@ _require(PRICING["payroll_only"]["per_employee_price_id"], "STRIPE_PAYROLL_PER_E
 _require(PRICING["bookkeeping_only"]["base_price_id"], "STRIPE_BOOKKEEPING_PRICE_ID")
 
 
-# =========================
-# Health Check
-# =========================
 @app.route("/health", methods=["GET"])
 def health():
     return jsonify(
@@ -120,9 +110,17 @@ def health():
     )
 
 
-# =========================
-# Stripe Checkout (Subscription)
-# =========================
+# DB ping endpoint to confirm SQLAlchemy can talk to Postgres
+@app.route("/db/ping", methods=["GET"])
+def db_ping():
+    try:
+        with db.engine.connect() as conn:
+            conn.exec_driver_sql("SELECT 1")
+        return jsonify({"db": "ok"}), 200
+    except Exception as e:
+        return jsonify({"db": "error", "detail": str(e)}), 500
+
+
 @app.route("/billing/checkout", methods=["POST"])
 def create_checkout():
     data = request.json or {}
@@ -158,9 +156,6 @@ def create_checkout():
     return jsonify({"checkout_url": session.url})
 
 
-# =========================
-# Stripe Webhook
-# =========================
 @app.route("/billing/webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.data
@@ -171,26 +166,10 @@ def stripe_webhook():
     except Exception:
         return jsonify({"error": "Webhook signature verification failed"}), 400
 
-    event_type = event.get("type")
-    obj = (event.get("data") or {}).get("object") or {}
-
-    if event_type == "checkout.session.completed":
-        print("checkout.session.completed:", obj.get("id"))
-    elif event_type == "customer.subscription.created":
-        print("customer.subscription.created:", obj.get("id"))
-    elif event_type == "customer.subscription.updated":
-        print("customer.subscription.updated:", obj.get("id"))
-    elif event_type == "customer.subscription.deleted":
-        print("customer.subscription.deleted:", obj.get("id"))
-    elif event_type == "invoice.payment_failed":
-        print("invoice.payment_failed:", obj.get("id"))
-
+    print("STRIPE_EVENT =", event.get("type"))
     return jsonify({"received": True})
 
 
-# =========================
-# Legal (Required)
-# =========================
 @app.route("/legal/terms")
 def terms():
     return jsonify({"terms": "FreightPay Terms of Service"})
@@ -206,17 +185,13 @@ def refund():
     return jsonify({"refund": "FreightPay Refund Policy"})
 
 
-# =========================
-# Root
-# =========================
 @app.route("/")
 def index():
     return jsonify({"app": "FreightPay", "version": "v5-production", "status": "live"})
 
 
-# =========================
-# Entry
-# =========================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
+    
