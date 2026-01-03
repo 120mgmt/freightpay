@@ -1,53 +1,51 @@
-# db.py
-# FULL, PRODUCTION-READY DATABASE INITIALIZATION (Render + Python 3.13)
-# Forces SQLAlchemy to use psycopg (v3) driver.
-
-from __future__ import annotations
+# db.py  (FULL FILE — psycopg3 compatible, production-safe)
 
 import os
+
 from flask_sqlalchemy import SQLAlchemy
-from flask_migrate import Migrate
+from sqlalchemy.engine import make_url
+from sqlalchemy.pool import NullPool
 
 db = SQLAlchemy()
-migrate = Migrate()
 
 
-def _normalize_database_url(database_url: str) -> str:
-    # legacy "postgres://" fix
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-
-    # FORCE psycopg3 driver (this is the key fix)
-    if database_url.startswith("postgresql://"):
-        database_url = "postgresql+psycopg://" + database_url[len("postgresql://"):]
-    elif database_url.startswith("postgresql+psycopg://"):
-        pass
-
-    # SSL required on Render Postgres
-    if "sslmode=" not in database_url:
-        sep = "&" if "?" in database_url else "?"
-        database_url = f"{database_url}{sep}sslmode=require"
-
-    return database_url
+def _normalize_database_url(url: str) -> str:
+    """
+    Ensure psycopg3 driver is used.
+    Accepts postgres:// or postgresql:// and upgrades to postgresql+psycopg://
+    """
+    u = make_url(url)
+    if u.drivername in ("postgres", "postgresql"):
+        return u.set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
+    if u.drivername == "postgresql+psycopg":
+        return url
+    return url
 
 
 def init_db(app):
-    database_url = os.getenv("DATABASE_URL")
-    if not database_url:
-        raise RuntimeError("DATABASE_URL environment variable is required")
+    raw_url = os.getenv("DATABASE_URL")
+    if not raw_url:
+        raise RuntimeError("DATABASE_URL is required")
 
-    database_url = _normalize_database_url(database_url)
+    db_url = _normalize_database_url(raw_url)
 
-    app.config["SQLALCHEMY_DATABASE_URI"] = database_url
-    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
-
-    # IMPORTANT: do not pass unknown keys into create_engine via engine_from_config
-    app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
-        "pool_pre_ping": True,
-        "pool_recycle": 300,
-        "pool_size": int(os.getenv("DB_POOL_SIZE", "5")),
-        "max_overflow": int(os.getenv("DB_MAX_OVERFLOW", "10")),
-    }
+    app.config.update(
+        SQLALCHEMY_DATABASE_URI=db_url,
+        SQLALCHEMY_TRACK_MODIFICATIONS=False,
+        SQLALCHEMY_ENGINE_OPTIONS={
+            # Render-friendly defaults
+            "poolclass": NullPool,
+            "pool_pre_ping": True,
+            "future": True,
+        },
+    )
 
     db.init_app(app)
-    migrate.init_app(app, db)
+
+    # Optional sanity check (does not create tables)
+    with app.app_context():
+        try:
+            with db.engine.connect() as conn:
+                conn.exec_driver_sql("SELECT 1")
+        except Exception as e:
+            raise RuntimeError(f"Database connection failed: {e}") from e
