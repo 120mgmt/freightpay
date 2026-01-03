@@ -1,4 +1,4 @@
-# app.py  (FULL FILE — DB WIRED + psycopg3 compatible)
+# app.py  (FULL FILE — DB WIRED + psycopg3 compatible + reporting registered)
 
 import os
 from datetime import datetime
@@ -10,6 +10,7 @@ from flask_cors import CORS
 import stripe
 
 from db import init_db, db  # db.py at repo root
+from freightpay.routes.reporting import reporting_bp  # REPORTING ROUTES
 
 # =========================
 # Load ENV FIRST (CRITICAL)
@@ -46,6 +47,11 @@ CORS(app)
 
 # Wire DB + migrations
 init_db(app)
+
+# =========================
+# Register Blueprints
+# =========================
+app.register_blueprint(reporting_bp)
 
 # =========================
 # Environment Variables
