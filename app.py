@@ -10,7 +10,7 @@ from flask_cors import CORS
 import stripe
 
 from db import init_db, db  # db.py at repo root
-from freightpay.routes.reporting import reporting_bp  # REPORTING ROUTES
+from routes.reporting import reporting_bp  # REPORTING ROUTES
 
 # =========================
 # Load ENV FIRST (CRITICAL)
