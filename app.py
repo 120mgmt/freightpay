@@ -10,6 +10,13 @@ from flask_cors import CORS
 import stripe
 
 # =========================
+# Database URL check (Render)
+# =========================
+DATABASE_URL = os.getenv("DATABASE_URL")
+print("DATABASE_URL_PRESENT =", bool(DATABASE_URL))
+print("DATABASE_URL_VALUE =", DATABASE_URL)
+
+# =========================
 # App Initialization
 # =========================
 app = Flask(__name__)
