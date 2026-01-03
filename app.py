@@ -1,20 +1,35 @@
 # app.py
 # FreightPay – Full Production Deployment v5
-# Date: 2026-01-01
+# Date: 2026-01-03
 # Status: Production-ready (Stripe price_id based)
 
 import os
 from datetime import datetime
+from urllib.parse import urlsplit, urlunsplit
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import stripe
 
 # =========================
-# Database URL check (Render)
+# Database URL check (SAFE)
 # =========================
 DATABASE_URL = os.getenv("DATABASE_URL")
 print("DATABASE_URL_PRESENT =", bool(DATABASE_URL))
-print("DATABASE_URL_VALUE =", DATABASE_URL)
+if DATABASE_URL:
+    try:
+        u = urlsplit(DATABASE_URL)
+        netloc = u.netloc
+        if "@" in netloc and ":" in netloc.split("@")[0]:
+            userinfo, hostinfo = netloc.split("@", 1)
+            user = userinfo.split(":", 1)[0]
+            netloc = f"{user}:****@{hostinfo}"
+        print(
+            "DATABASE_URL_VALUE_MASKED =",
+            urlunsplit((u.scheme, netloc, u.path, u.query, u.fragment)),
+        )
+    except Exception:
+        print("DATABASE_URL_VALUE_MASKED = (mask failed)")
 
 # =========================
 # App Initialization
@@ -26,7 +41,7 @@ CORS(app)
 # Environment Variables
 # =========================
 APP_ENV = os.getenv("APP_ENV", "production")
-BASE_URL = os.getenv("BASE_URL", "https://freightpay.onrender.com")
+BASE_URL = os.getenv("BASE_URL", "https://api.ledgerhaul.com")
 
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
@@ -124,7 +139,10 @@ def create_checkout():
     # Add per-employee line item if plan uses it and employees > 0
     per_emp_price_id = plan.get("per_employee_price_id")
     if per_emp_price_id and employees > 0:
-        line_items.append({"price": _require(per_emp_price_id, f"{plan_key}.per_employee_price_id"), "quantity": employees})
+        line_items.append({
+            "price": _require(per_emp_price_id, f"{plan_key}.per_employee_price_id"),
+            "quantity": employees
+        })
 
     session = stripe.checkout.Session.create(
         mode="subscription",
@@ -160,7 +178,6 @@ def stripe_webhook():
     obj = (event.get("data") or {}).get("object") or {}
 
     if event_type == "checkout.session.completed":
-        # In production you persist customer/subscription/entitlements here
         print("checkout.session.completed:", obj.get("id"))
 
     elif event_type == "customer.subscription.created":
@@ -185,9 +202,11 @@ def stripe_webhook():
 def terms():
     return jsonify({"terms": "FreightPay Terms of Service"})
 
+
 @app.route("/legal/privacy")
 def privacy():
     return jsonify({"privacy": "FreightPay Privacy Policy"})
+
 
 @app.route("/legal/refund")
 def refund():
