@@ -1,5 +1,5 @@
 # freightpay/services/payroll_journalization.py
-# PAYROLL → LEDGER JOURNALIZATION (native, compliance-safe)
+# PAYROLL → LEDGER JOURNALIZATION (posts expenses + liabilities only; payout clears cash separately)
 
 from decimal import Decimal
 from sqlalchemy.orm import Session
@@ -26,92 +26,51 @@ def post_payroll_run(
     - futa
     - suta
     - net_pay
+
+    IMPORTANT:
+    - This function does NOT post Cash.
+    - Cash is posted when the payout occurs (see payroll_payouts.post_payroll_payout).
     """
+
+    gross_wages = Decimal(payroll_totals["gross_wages"])
+
+    fed_wh = Decimal(payroll_totals["employee_withholding_federal"])
+    st_wh = Decimal(payroll_totals["employee_withholding_state"])
+    ee_fica = Decimal(payroll_totals["employee_fica"])
+
+    er_fica = Decimal(payroll_totals["employer_fica"])
+    futa = Decimal(payroll_totals["futa"])
+    suta = Decimal(payroll_totals["suta"])
+
+    net_pay = Decimal(payroll_totals["net_pay"])
 
     entries = []
 
-    # Gross wages expense
-    entries.append(
-        {
-            "account_code": "5000",  # Wages Expense
-            "debit": Decimal(payroll_totals["gross_wages"]),
-            "credit": Decimal("0.00"),
-        }
-    )
+    # Expenses
+    if gross_wages > 0:
+        entries.append({"account_code": "5000", "debit": gross_wages, "credit": Decimal("0.00")})  # Wages Expense
 
-    # Employee withholdings (liabilities)
-    entries.extend(
-        [
-            {
-                "account_code": "2110",  # Federal Withholding Payable
-                "debit": Decimal("0.00"),
-                "credit": Decimal(payroll_totals["employee_withholding_federal"]),
-            },
-            {
-                "account_code": "2120",  # State Withholding Payable
-                "debit": Decimal("0.00"),
-                "credit": Decimal(payroll_totals["employee_withholding_state"]),
-            },
-            {
-                "account_code": "2130",  # FICA Payable (Employee)
-                "debit": Decimal("0.00"),
-                "credit": Decimal(payroll_totals["employee_fica"]),
-            },
-        ]
-    )
+    employer_taxes = er_fica + futa + suta
+    if employer_taxes > 0:
+        entries.append({"account_code": "5100", "debit": employer_taxes, "credit": Decimal("0.00")})  # Payroll Tax Exp
 
-    # Employer payroll taxes expense + liability
-    employer_taxes = (
-        Decimal(payroll_totals["employer_fica"])
-        + Decimal(payroll_totals["futa"])
-        + Decimal(payroll_totals["suta"])
-    )
+    # Liabilities
+    if fed_wh > 0:
+        entries.append({"account_code": "2110", "debit": Decimal("0.00"), "credit": fed_wh})
+    if st_wh > 0:
+        entries.append({"account_code": "2120", "debit": Decimal("0.00"), "credit": st_wh})
+    if ee_fica > 0:
+        entries.append({"account_code": "2130", "debit": Decimal("0.00"), "credit": ee_fica})
 
-    entries.append(
-        {
-            "account_code": "5100",  # Payroll Tax Expense (Employer)
-            "debit": employer_taxes,
-            "credit": Decimal("0.00"),
-        }
-    )
+    if er_fica > 0:
+        entries.append({"account_code": "2140", "debit": Decimal("0.00"), "credit": er_fica})
+    if futa > 0:
+        entries.append({"account_code": "2150", "debit": Decimal("0.00"), "credit": futa})
+    if suta > 0:
+        entries.append({"account_code": "2160", "debit": Decimal("0.00"), "credit": suta})
 
-    entries.extend(
-        [
-            {
-                "account_code": "2140",  # FICA Payable (Employer)
-                "debit": Decimal("0.00"),
-                "credit": Decimal(payroll_totals["employer_fica"]),
-            },
-            {
-                "account_code": "2150",  # FUTA Payable
-                "debit": Decimal("0.00"),
-                "credit": Decimal(payroll_totals["futa"]),
-            },
-            {
-                "account_code": "2160",  # SUTA Payable
-                "debit": Decimal("0.00"),
-                "credit": Decimal(payroll_totals["suta"]),
-            },
-        ]
-    )
-
-    # Net pay liability
-    entries.append(
-        {
-            "account_code": "2100",  # Payroll Payable
-            "debit": Decimal("0.00"),
-            "credit": Decimal(payroll_totals["net_pay"]),
-        }
-    )
-
-    # Cash clearing (when payroll is funded)
-    entries.append(
-        {
-            "account_code": "1000",  # Cash
-            "debit": Decimal("0.00"),
-            "credit": Decimal(payroll_totals["net_pay"]),
-        }
-    )
+    if net_pay > 0:
+        entries.append({"account_code": "2100", "debit": Decimal("0.00"), "credit": net_pay})  # Payroll Payable
 
     return post_journal(
         db,
@@ -123,3 +82,5 @@ def post_payroll_run(
         posted_by=posted_by,
         entries=entries,
     )
+
+  
