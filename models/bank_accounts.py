@@ -1,5 +1,5 @@
 # freightpay/models/bank_accounts.py
-# BANK ACCOUNTS + FEED INGESTION (PLAID-STYLE FOUNDATION)
+# STRIPE FINANCIAL CONNECTIONS — BANK FEED INGESTION (PRODUCTION)
 
 import uuid
 from decimal import Decimal
@@ -37,17 +37,24 @@ class BankAccount(Base):
     )
 
     provider = Column(
-        Enum("plaid", "manual", name="bank_provider"),
+        Enum("stripe", "manual", name="bank_provider"),
         nullable=False,
+        default="stripe",
     )
 
-    provider_account_id = Column(String(120), nullable=True)
+    # Stripe Financial Connections IDs
+    stripe_account_id = Column(String(120), nullable=True)   # fa_*
+    stripe_institution = Column(String(120), nullable=True)
 
     name = Column(String(120), nullable=False)
-    institution = Column(String(120), nullable=True)
 
     account_type = Column(
-        Enum("checking", "savings", "credit_card", name="bank_account_type"),
+        Enum(
+            "checking",
+            "savings",
+            "credit_card",
+            name="bank_account_type",
+        ),
         nullable=False,
     )
 
@@ -62,8 +69,8 @@ class BankAccount(Base):
         UniqueConstraint(
             "company_id",
             "provider",
-            "provider_account_id",
-            name="uq_bank_account_provider",
+            "stripe_account_id",
+            name="uq_bank_account_stripe",
         ),
         Index("ix_bank_accounts_company", "company_id"),
     )
@@ -80,6 +87,9 @@ class BankTransaction(Base):
         nullable=False,
         index=True,
     )
+
+    # Stripe Financial Connections Transaction ID
+    stripe_transaction_id = Column(String(120), nullable=True, index=True)
 
     transaction_date = Column(Date, nullable=False)
     description = Column(String(255), nullable=False)
@@ -103,5 +113,10 @@ class BankTransaction(Base):
 
     __table_args__ = (
         CheckConstraint("amount != 0", name="ck_bank_txn_amount_nonzero"),
+        UniqueConstraint(
+            "bank_account_id",
+            "stripe_transaction_id",
+            name="uq_bank_txn_stripe_id",
+        ),
         Index("ix_bank_txn_account_date", "bank_account_id", "transaction_date"),
     )
