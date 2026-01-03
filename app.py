@@ -1,4 +1,4 @@
-# app.py  (FULL FILE — DB WIRED + psycopg3 compatible + reporting registered)
+# app.py  (FULL FILE — DB WIRED + psycopg3 compatible + reporting + reconciliation registered)
 
 import os
 from datetime import datetime
@@ -10,7 +10,8 @@ from flask_cors import CORS
 import stripe
 
 from db import init_db, db  # db.py at repo root
-from routes.reporting import reporting_bp  # REPORTING ROUTES
+from routes.reporting import reporting_bp  # REPORTING ROUTES (root-based)
+from routes.reconciliation import reconciliation_bp  # RECONCILIATION ROUTES (root-based)
 
 # =========================
 # Load ENV FIRST (CRITICAL)
@@ -52,6 +53,7 @@ init_db(app)
 # Register Blueprints
 # =========================
 app.register_blueprint(reporting_bp)
+app.register_blueprint(reconciliation_bp)
 
 # =========================
 # Environment Variables
@@ -124,7 +126,6 @@ def health():
     )
 
 
-# DB ping endpoint to confirm SQLAlchemy can talk to Postgres
 @app.route("/db/ping", methods=["GET"])
 def db_ping():
     try:
@@ -207,4 +208,3 @@ def index():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-
