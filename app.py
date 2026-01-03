@@ -4,11 +4,17 @@ import os
 from datetime import datetime
 from urllib.parse import urlsplit, urlunsplit
 
+from dotenv import load_dotenv
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import stripe
 
 from db import init_db, db  # db.py at repo root
+
+# =========================
+# Load ENV FIRST (CRITICAL)
+# =========================
+load_dotenv()  # loads .env from project root into os.environ
 
 # =========================
 # Database URL check (SAFE)
@@ -29,6 +35,8 @@ if DATABASE_URL:
         )
     except Exception:
         print("DATABASE_URL_VALUE_MASKED = (mask failed)")
+else:
+    raise RuntimeError("DATABASE_URL is required to start the app")
 
 # =========================
 # App Initialization
@@ -194,4 +202,3 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
 
-    
