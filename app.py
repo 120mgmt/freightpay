@@ -1,7 +1,7 @@
 # app.py
 # FreightPay – Full Production Deployment v5
 # Date: 2026-01-03
-# Status: Production-ready (Stripe price_id based)
+# Status: Production-ready (Stripe price_id based + DB wired)
 
 import os
 from datetime import datetime
@@ -10,6 +10,8 @@ from urllib.parse import urlsplit, urlunsplit
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import stripe
+
+from db import init_db  # db.py at repo root; adjust if different
 
 # =========================
 # Database URL check (SAFE)
@@ -37,6 +39,9 @@ if DATABASE_URL:
 app = Flask(__name__)
 CORS(app)
 
+# Wire DB + migrations (must be after app creation)
+init_db(app)
+
 # =========================
 # Environment Variables
 # =========================
@@ -46,7 +51,7 @@ BASE_URL = os.getenv("BASE_URL", "https://api.ledgerhaul.com")
 STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-# Saved Stripe Price IDs (from your Render env screenshot)
+# Saved Stripe Price IDs
 STRIPE_BOOKKEEPING_PRICE_ID = os.getenv("STRIPE_BOOKKEEPING_PRICE_ID")
 STRIPE_COMBO_PRICE_ID = os.getenv("STRIPE_COMBO_PRICE_ID")
 STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID = os.getenv("STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID")
@@ -76,9 +81,6 @@ def _safe_int(v, default=0) -> int:
 # =========================
 # Pricing Map (Price IDs)
 # =========================
-# Combo: base + per-employee
-# Payroll only: base + per-employee
-# Bookkeeping only: base only
 PRICING = {
     "combo": {
         "name": "Payroll + Bookkeeping",
@@ -97,7 +99,6 @@ PRICING = {
     },
 }
 
-# Validate required env vars for plans you intend to sell
 _require(PRICING["combo"]["base_price_id"], "STRIPE_COMBO_PRICE_ID")
 _require(PRICING["combo"]["per_employee_price_id"], "STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID")
 _require(PRICING["payroll_only"]["base_price_id"], "STRIPE_PAYROLL_PRICE_ID")
@@ -110,11 +111,13 @@ _require(PRICING["bookkeeping_only"]["base_price_id"], "STRIPE_BOOKKEEPING_PRICE
 # =========================
 @app.route("/health", methods=["GET"])
 def health():
-    return jsonify({
-        "status": "ok",
-        "env": APP_ENV,
-        "timestamp": datetime.utcnow().isoformat()
-    })
+    return jsonify(
+        {
+            "status": "ok",
+            "env": APP_ENV,
+            "timestamp": datetime.utcnow().isoformat(),
+        }
+    )
 
 
 # =========================
@@ -132,17 +135,16 @@ def create_checkout():
     plan = PRICING[plan_key]
     base_price_id = _require(plan["base_price_id"], f"{plan_key}.base_price_id")
 
-    line_items = [
-        {"price": base_price_id, "quantity": 1}
-    ]
+    line_items = [{"price": base_price_id, "quantity": 1}]
 
-    # Add per-employee line item if plan uses it and employees > 0
     per_emp_price_id = plan.get("per_employee_price_id")
     if per_emp_price_id and employees > 0:
-        line_items.append({
-            "price": _require(per_emp_price_id, f"{plan_key}.per_employee_price_id"),
-            "quantity": employees
-        })
+        line_items.append(
+            {
+                "price": _require(per_emp_price_id, f"{plan_key}.per_employee_price_id"),
+                "quantity": employees,
+            }
+        )
 
     session = stripe.checkout.Session.create(
         mode="subscription",
@@ -150,10 +152,7 @@ def create_checkout():
         line_items=line_items,
         success_url=f"{BASE_URL}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
         cancel_url=f"{BASE_URL}/billing/cancel",
-        metadata={
-            "plan": plan_key,
-            "employees": str(employees),
-        }
+        metadata={"plan": plan_key, "employees": str(employees)},
     )
 
     return jsonify({"checkout_url": session.url})
@@ -168,9 +167,7 @@ def stripe_webhook():
     sig_header = request.headers.get("Stripe-Signature")
 
     try:
-        event = stripe.Webhook.construct_event(
-            payload, sig_header, STRIPE_WEBHOOK_SECRET
-        )
+        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
     except Exception:
         return jsonify({"error": "Webhook signature verification failed"}), 400
 
@@ -179,16 +176,12 @@ def stripe_webhook():
 
     if event_type == "checkout.session.completed":
         print("checkout.session.completed:", obj.get("id"))
-
     elif event_type == "customer.subscription.created":
         print("customer.subscription.created:", obj.get("id"))
-
     elif event_type == "customer.subscription.updated":
         print("customer.subscription.updated:", obj.get("id"))
-
     elif event_type == "customer.subscription.deleted":
         print("customer.subscription.deleted:", obj.get("id"))
-
     elif event_type == "invoice.payment_failed":
         print("invoice.payment_failed:", obj.get("id"))
 
@@ -218,11 +211,7 @@ def refund():
 # =========================
 @app.route("/")
 def index():
-    return jsonify({
-        "app": "FreightPay",
-        "version": "v5-production",
-        "status": "live"
-    })
+    return jsonify({"app": "FreightPay", "version": "v5-production", "status": "live"})
 
 
 # =========================
