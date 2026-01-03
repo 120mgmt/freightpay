@@ -1,4 +1,5 @@
 # freightpay/models/ledger.py
+# SYSTEM OF RECORD — PRODUCTION GRADE GENERAL LEDGER
 
 import uuid
 from datetime import datetime
@@ -7,11 +8,12 @@ from decimal import Decimal
 from sqlalchemy import (
     Column,
     DateTime,
-    ForeignKey,
     String,
     Numeric,
     CheckConstraint,
+    ForeignKey,
     Index,
+    Enum,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
@@ -20,13 +22,64 @@ from sqlalchemy.sql import func
 from .base import Base
 
 
+class Journal(Base):
+    """
+    Journal header.
+    One journal MUST have multiple ledger lines.
+    """
+    __tablename__ = "journals"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    company_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    source_type = Column(
+        Enum(
+            "payroll",
+            "tax",
+            "payment",
+            "adjustment",
+            "reversal",
+            "manual",
+            name="journal_source_type",
+        ),
+        nullable=False,
+    )
+
+    source_id = Column(UUID(as_uuid=True), nullable=False)
+
+    accounting_period = Column(
+        String(7),  # YYYY-MM
+        nullable=False,
+        index=True,
+    )
+
+    description = Column(String(255), nullable=False)
+
+    posted_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        nullable=False,
+    )
+
+    posted_by = Column(UUID(as_uuid=True), nullable=False)
+
+    entries = relationship(
+        "LedgerEntry",
+        back_populates="journal",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
 class LedgerEntry(Base):
     """
-    Production-grade ledger entry.
-    Enforces:
-    - Double-entry structure (debit / credit)
-    - Immutable financial records
-    - Payroll + settlement traceability
+    Immutable double-entry ledger line.
     """
 
     __tablename__ = "ledger_entries"
@@ -40,38 +93,32 @@ class LedgerEntry(Base):
         index=True,
     )
 
-    payroll_run_id = Column(
+    journal_id = Column(
         UUID(as_uuid=True),
-        ForeignKey("payroll_runs.id", ondelete="SET NULL"),
-        nullable=True,
+        ForeignKey("journals.id", ondelete="CASCADE"),
+        nullable=False,
         index=True,
     )
 
-    entry_type = Column(
-        String(20),
-        nullable=False,
-        doc="debit or credit",
-    )
-
-    amount = Column(
-        Numeric(12, 2),
-        nullable=False,
-        doc="Always stored as positive decimal",
-    )
-
-    currency = Column(
-        String(3),
-        nullable=False,
-        default="USD",
-    )
-
-    account = Column(
+    account_code = Column(
         String(50),
         nullable=False,
-        doc="ledger account name (e.g. payroll_expense, cash, liability)",
+        doc="Chart of Accounts code",
     )
 
-    description = Column(String(255), nullable=True)
+    debit = Column(
+        Numeric(14, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+    )
+
+    credit = Column(
+        Numeric(14, 2),
+        nullable=False,
+        default=Decimal("0.00"),
+    )
+
+    currency = Column(String(3), nullable=False, default="USD")
 
     created_at = Column(
         DateTime(timezone=True),
@@ -79,37 +126,16 @@ class LedgerEntry(Base):
         nullable=False,
     )
 
-    # Relationships
-    company = relationship("Company", backref="ledger_entries")
-    payroll_run = relationship("PayrollRun", backref="ledger_entries")
+    journal = relationship("Journal", back_populates="entries")
 
     __table_args__ = (
         CheckConstraint(
-            "entry_type IN ('debit', 'credit')",
-            name="ck_ledger_entry_type_valid",
-        ),
-        CheckConstraint(
-            "amount > 0",
-            name="ck_ledger_amount_positive",
+            "(debit = 0 AND credit > 0) OR (credit = 0 AND debit > 0)",
+            name="ck_ledger_debit_credit_exclusive",
         ),
         Index(
-            "ix_ledger_company_created",
+            "ix_ledger_company_period",
             "company_id",
-            "created_at",
+            "account_code",
         ),
     )
-
-    def as_dict(self) -> dict:
-        return {
-            "id": str(self.id),
-            "company_id": str(self.company_id),
-            "payroll_run_id": str(self.payroll_run_id)
-            if self.payroll_run_id
-            else None,
-            "entry_type": self.entry_type,
-            "amount": float(self.amount),
-            "currency": self.currency,
-            "account": self.account,
-            "description": self.description,
-            "created_at": self.created_at.isoformat(),
-        }
