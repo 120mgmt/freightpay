@@ -1,20 +1,10 @@
 # models/reconciliation.py
 # FULL FILE — reconciliation models (NO circular imports, root-based)
 
-from datetime import date
-from decimal import Decimal
+from __future__ import annotations
 
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Date,
-    DateTime,
-    Boolean,
-    ForeignKey,
-    Numeric,
-    Enum,
-)
+from enum import Enum as PyEnum
+from sqlalchemy import Column, Integer, String, Date, DateTime, Boolean, ForeignKey, Numeric, Enum
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
@@ -22,9 +12,9 @@ from db import db
 
 
 # =========================
-# ENUMS
+# ENUMS (real Python Enum)
 # =========================
-class ReconciliationStatus(str):
+class ReconciliationStatus(str, PyEnum):
     OPEN = "open"
     FINALIZED = "finalized"
 
@@ -36,15 +26,15 @@ class BankStatement(db.Model):
     __tablename__ = "bank_statements"
 
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, nullable=False)
-    account_code = Column(String, nullable=False)
-    period = Column(String, nullable=False)  # YYYY-MM
+    company_id = Column(Integer, nullable=False, index=True)
+    account_code = Column(String, nullable=False, index=True)
+    period = Column(String, nullable=False, index=True)  # YYYY-MM
 
     statement_start = Column(Date, nullable=False)
     statement_end = Column(Date, nullable=False)
     ending_balance = Column(Numeric(12, 2), nullable=False)
 
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
     lines = relationship(
         "BankStatementLine",
@@ -61,13 +51,13 @@ class BankStatementLine(db.Model):
     __tablename__ = "bank_statement_lines"
 
     id = Column(Integer, primary_key=True)
-    statement_id = Column(Integer, ForeignKey("bank_statements.id"), nullable=False)
+    statement_id = Column(Integer, ForeignKey("bank_statements.id"), nullable=False, index=True)
 
     txn_date = Column(Date, nullable=False)
     description = Column(String, nullable=False)
     amount = Column(Numeric(12, 2), nullable=False)
 
-    matched = Column(Boolean, default=False)
+    matched = Column(Boolean, nullable=False, default=False)
     ledger_entry_id = Column(Integer, nullable=True)
 
     statement = relationship("BankStatement", back_populates="lines")
@@ -80,24 +70,20 @@ class Reconciliation(db.Model):
     __tablename__ = "reconciliations"
 
     id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, nullable=False)
-    account_code = Column(String, nullable=False)
-    period = Column(String, nullable=False)
+    company_id = Column(Integer, nullable=False, index=True)
+    account_code = Column(String, nullable=False, index=True)
+    period = Column(String, nullable=False, index=True)
 
     ledger_balance = Column(Numeric(12, 2), nullable=False)
     statement_balance = Column(Numeric(12, 2), nullable=False)
 
     status = Column(
-        Enum(
-            ReconciliationStatus.OPEN,
-            ReconciliationStatus.FINALIZED,
-            name="reconciliation_status",
-        ),
+        Enum(ReconciliationStatus, name="reconciliation_status"),
         nullable=False,
         default=ReconciliationStatus.OPEN,
     )
 
-    is_reconciled = Column(Boolean, default=False)
+    is_reconciled = Column(Boolean, nullable=False, default=False)
     finalized_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, server_default=func.now())
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
