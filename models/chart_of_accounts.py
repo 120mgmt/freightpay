@@ -1,27 +1,27 @@
-# freightpay/models/chart_of_accounts.py
-# PRODUCTION GRADE CHART OF ACCOUNTS (COA) — tenant/company-scoped, payroll-ready
+# models/chart_of_accounts.py
+# PRODUCTION GRADE CHART OF ACCOUNTS (COA) — company-scoped, payroll-ready (root-based)
 
-import uuid
+from __future__ import annotations
 
 from sqlalchemy import (
     Column,
-    DateTime,
+    Integer,
     String,
     Boolean,
-    ForeignKey,
+    DateTime,
     Enum,
+    ForeignKey,
     UniqueConstraint,
     Index,
     CheckConstraint,
 )
-from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 
-from .base import Base
+from db import db
 
 
-class Account(Base):
+class Account(db.Model):
     """
     Company-scoped Chart of Accounts.
 
@@ -32,14 +32,10 @@ class Account(Base):
 
     __tablename__ = "accounts"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id = Column(Integer, primary_key=True)
 
-    company_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("companies.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    # Keep this as Integer to match your current root-based models/services
+    company_id = Column(Integer, nullable=False, index=True)
 
     # Stable key referenced by LedgerEntry.account_code
     account_code = Column(String(50), nullable=False)
@@ -64,7 +60,7 @@ class Account(Base):
     )
 
     parent_id = Column(
-        UUID(as_uuid=True),
+        Integer,
         ForeignKey("accounts.id", ondelete="SET NULL"),
         nullable=True,
         index=True,
@@ -75,8 +71,6 @@ class Account(Base):
 
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
-    # Relationships
-    company = relationship("Company", backref="accounts")
     parent = relationship("Account", remote_side=[id], backref="children")
 
     __table_args__ = (
@@ -88,13 +82,13 @@ class Account(Base):
 
     def as_dict(self) -> dict:
         return {
-            "id": str(self.id),
-            "company_id": str(self.company_id),
+            "id": self.id,
+            "company_id": self.company_id,
             "account_code": self.account_code,
             "name": self.name,
             "account_type": self.account_type,
             "normal_balance": self.normal_balance,
-            "parent_id": str(self.parent_id) if self.parent_id else None,
+            "parent_id": self.parent_id,
             "is_active": self.is_active,
             "is_system": self.is_system,
             "created_at": self.created_at.isoformat() if self.created_at else None,
@@ -137,6 +131,3 @@ def default_coa_rows() -> list[dict]:
         {"account_code": "5100", "name": "Payroll Tax Expense (Employer)", "account_type": "expense", "normal_balance": "debit"},
         {"account_code": "5200", "name": "Bank Fees", "account_type": "expense", "normal_balance": "debit"},
     ]
-
-
-# Commit message: Add company-scoped Chart of Accounts model + default payroll-ready COA seed list
