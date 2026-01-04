@@ -7,16 +7,16 @@ from decimal import Decimal
 from flask import Blueprint, request, jsonify
 
 from db import db
-from freightpay.models.reconciliation import (
+from models.reconciliation import (
     BankStatement,
     BankStatementLine,
     ReconciliationStatus,
 )
-from freightpay.services.reconciliation import (
+from services.reconciliation import (
     match_statement_lines,
     finalize_reconciliation,
 )
-from freightpay.models.periods import AccountingPeriod
+from models.periods import AccountingPeriod
 
 reconciliation_bp = Blueprint("reconciliation_bp", __name__, url_prefix="/reconciliation")
 
