@@ -1,12 +1,7 @@
 # freightpay/models/company.py
 
 import uuid
-from sqlalchemy import (
-    Column,
-    String,
-    DateTime,
-    Index,
-)
+from sqlalchemy import Column, String, DateTime, Index
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -28,16 +23,19 @@ class Company(Base):
         nullable=False,
     )
 
+    # FIX: remove backref="company" (conflicts with an existing Driver.company property)
+    # Use back_populates to pair with Driver.company
     drivers = relationship(
         "Driver",
-        backref="company",
+        back_populates="company",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
 
+    # Prefer back_populates here as well (pairs with PayrollRun.company)
     payroll_runs = relationship(
         "PayrollRun",
-        backref="company",
+        back_populates="company",
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
