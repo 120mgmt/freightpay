@@ -11,7 +11,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
-from sqlalchemy.orm import relationship
 
 from .base import Base
 
@@ -36,8 +35,6 @@ class Driver(Base):
         server_default=func.now(),
         nullable=False,
     )
-
-    company = relationship("Company", backref="drivers")
 
 
 Index(
