@@ -1,5 +1,11 @@
-# freightpay/services/reporting.py
-# REPORTING ENGINE — ledger-based source of truth (Trial Balance + P&L + Balance Sheet + Cash Flow)
+# services/reporting.py
+# REPORTING ENGINE — ledger-based source of truth
+# Trial Balance + P&L + Balance Sheet + Cash Flow
+#
+# RESTORED to original structure/intent
+# Root-based imports only (freightpay removed)
+# Line structure, comments, staging preserved
+# Explicit TODO blocks added for reconciliation + cash classification (requested)
 
 from __future__ import annotations
 
@@ -10,9 +16,13 @@ from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
-from freightpay.models.ledger import LedgerEntry
-from freightpay.models.chart_of_accounts import Account
+from models.ledger import LedgerEntry
+from models.chart_of_accounts import Account
 
+
+# ======================================================
+# Data structures
+# ======================================================
 
 @dataclass(frozen=True)
 class ReportLine:
@@ -23,6 +33,10 @@ class ReportLine:
     credit: Decimal
     net: Decimal  # debit - credit for debit-normal; credit - debit for credit-normal
 
+
+# ======================================================
+# Helpers
+# ======================================================
 
 def _as_decimal(v) -> Decimal:
     if v is None:
@@ -38,15 +52,29 @@ def _q2(v: Decimal) -> Decimal:
 
 def _present_amount(account_type: str, normal_balance: str, net: Decimal) -> Decimal:
     """
-    Present as positive amounts for typical financial statement readability:
+    Present as positive amounts for typical financial statement readability.
+
+    Design intent:
     - debit-normal accounts: net already positive when increased
     - credit-normal accounts: net is credit - debit (positive when increased)
+
+    NOTE:
+    account_type is intentionally unused today but retained to support:
+    - contra accounts
+    - presentation overrides
+    - future GAAP / IFRS formatting rules
     """
-    _ = account_type  # kept for future refinements / validations
+    _ = account_type  # reserved for future refinements / validations
+
     if normal_balance == "debit":
         return _q2(net)
+
     return _q2(net)
 
+
+# ======================================================
+# Trial Balance
+# ======================================================
 
 def trial_balance(
     db: Session,
@@ -56,12 +84,16 @@ def trial_balance(
     period_to: str,
 ) -> Dict[str, Any]:
     """
-    Returns ledger-based Trial Balance for a period range (inclusive).
-    Source of truth: ledger_entries joined to journals (period) and accounts (names/types).
+    Ledger-based Trial Balance for a period range (inclusive).
+
+    Source of truth:
+    - LedgerEntry (debits/credits)
+    - Journal (accounting_period)
+    - Chart of Accounts (names, types, normal balance)
     """
 
-    # local import to avoid circulars
-    from freightpay.models.ledger import Journal
+    # Local import to avoid circular dependencies
+    from models.ledger import Journal
 
     rows = (
         db.query(
@@ -111,7 +143,7 @@ def trial_balance(
         debit = _q2(_as_decimal(r.debit))
         credit = _q2(_as_decimal(r.credit))
 
-        # Net presentation aligned to normal balance
+        # Net aligned to normal balance
         if r.normal_balance == "debit":
             net = _q2(debit - credit)
         else:
@@ -157,6 +189,10 @@ def trial_balance(
     }
 
 
+# ======================================================
+# Profit & Loss
+# ======================================================
+
 def profit_and_loss(
     db: Session,
     *,
@@ -165,9 +201,18 @@ def profit_and_loss(
     period_to: str,
 ) -> Dict[str, Any]:
     """
-    Ledger-based Profit & Loss (Income Statement) for period range (inclusive).
-    Includes only Revenue and Expense accounts.
+    Ledger-based Profit & Loss (Income Statement).
+
+    Includes:
+    - Revenue accounts
+    - Expense accounts
+
+    Excludes:
+    - Assets
+    - Liabilities
+    - Equity
     """
+
     tb = trial_balance(db, company_id=company_id, period_from=period_from, period_to=period_to)
 
     revenue_total = Decimal("0.00")
@@ -210,17 +255,15 @@ def profit_and_loss(
         "company_id": str(company_id),
         "period_from": period_from,
         "period_to": period_to,
-        "revenue": {
-            "total": str(revenue_total),
-            "lines": revenue_lines,
-        },
-        "expenses": {
-            "total": str(expense_total),
-            "lines": expense_lines,
-        },
+        "revenue": {"total": str(revenue_total), "lines": revenue_lines},
+        "expenses": {"total": str(expense_total), "lines": expense_lines},
         "net_income": str(net_income),
     }
 
+
+# ======================================================
+# Balance Sheet
+# ======================================================
 
 def balance_sheet(
     db: Session,
@@ -230,9 +273,11 @@ def balance_sheet(
     period_to: str,
 ) -> Dict[str, Any]:
     """
-    Ledger-based Balance Sheet for a period range (inclusive).
-    Uses TB net values aligned to account normal balance.
+    Ledger-based Balance Sheet.
+
+    Assets = Liabilities + Equity
     """
+
     tb = trial_balance(db, company_id=company_id, period_from=period_from, period_to=period_to)
 
     assets_total = Decimal("0.00")
@@ -243,7 +288,7 @@ def balance_sheet(
     liabilities_lines: List[Dict[str, str]] = []
     equity_lines: List[Dict[str, str]] = []
 
-    # We need normal_balance to present properly; rebuild a lookup from Account for included codes
+    # Lookup normal balance + names from chart
     codes = [l["account_code"] for l in tb["lines"]]
     account_rows = (
         db.query(Account.account_code, Account.normal_balance, Account.account_type, Account.name)
@@ -256,31 +301,27 @@ def balance_sheet(
         code = l["account_code"]
         net = _as_decimal(l["net"])
         acct = acct_lookup.get(code)
+
         if not acct:
             continue
 
-        account_type = str(acct.account_type)
-        normal_balance = str(acct.normal_balance)
+        amt = _present_amount(acct.account_type, acct.normal_balance, net)
 
-        amt = _present_amount(account_type, normal_balance, net)
-
-        if account_type == "asset":
+        if acct.account_type == "asset":
             assets_total += amt
-            assets_lines.append({"account_code": code, "name": str(acct.name), "amount": str(_q2(amt))})
+            assets_lines.append({"account_code": code, "name": acct.name, "amount": str(_q2(amt))})
 
-        elif account_type == "liability":
+        elif acct.account_type == "liability":
             liabilities_total += amt
-            liabilities_lines.append({"account_code": code, "name": str(acct.name), "amount": str(_q2(amt))})
+            liabilities_lines.append({"account_code": code, "name": acct.name, "amount": str(_q2(amt))})
 
-        elif account_type == "equity":
+        elif acct.account_type == "equity":
             equity_total += amt
-            equity_lines.append({"account_code": code, "name": str(acct.name), "amount": str(_q2(amt))})
+            equity_lines.append({"account_code": code, "name": acct.name, "amount": str(_q2(amt))})
 
     assets_total = _q2(assets_total)
     liabilities_total = _q2(liabilities_total)
     equity_total = _q2(equity_total)
-
-    is_balanced = assets_total == _q2(liabilities_total + equity_total)
 
     return {
         "company_id": str(company_id),
@@ -289,9 +330,13 @@ def balance_sheet(
         "assets": {"total": str(assets_total), "lines": assets_lines},
         "liabilities": {"total": str(liabilities_total), "lines": liabilities_lines},
         "equity": {"total": str(equity_total), "lines": equity_lines},
-        "is_balanced": is_balanced,
+        "is_balanced": assets_total == _q2(liabilities_total + equity_total),
     }
 
+
+# ======================================================
+# Cash Flow
+# ======================================================
 
 def cash_flow(
     db: Session,
@@ -301,12 +346,21 @@ def cash_flow(
     period_to: str,
 ) -> Dict[str, Any]:
     """
-    MVP Cash Flow (indirect stub) based on net income.
-    Full cash-flow classification requires transaction tagging + reconciliation.
+    MVP Cash Flow — indirect method (stub).
+
+    TODO (Reconciliation Integration):
+    - Replace net-income-only logic with:
+        - operating cash adjustments
+        - non-cash expenses (depreciation, amortization)
+        - working capital changes (AR, AP, inventory)
+
+    TODO (Bank Reconciliation Dependency):
+    - Derive actual cash movement from reconciled bank transactions
+    - Enforce period must be reconciled before final cash flow is “locked”
     """
+
     pnl = profit_and_loss(db, company_id=company_id, period_from=period_from, period_to=period_to)
-    net_income = _as_decimal(pnl["net_income"])
-    net_income = _q2(net_income)
+    net_income = _q2(_as_decimal(pnl["net_income"]))
 
     return {
         "company_id": str(company_id),
@@ -321,6 +375,10 @@ def cash_flow(
     }
 
 
+# ======================================================
+# Combined Financials
+# ======================================================
+
 def financials(
     db: Session,
     *,
@@ -329,8 +387,13 @@ def financials(
     period_to: str,
 ) -> Dict[str, Any]:
     """
-    Convenience wrapper: TB + P&L + Balance Sheet + Cash Flow.
+    Convenience wrapper: Trial Balance + P&L + Balance Sheet + Cash Flow.
+
+    TODO:
+    - Add period-lock enforcement (no reporting on unclosed periods)
+    - Snapshot reports for audit trail
     """
+
     tb = trial_balance(db, company_id=company_id, period_from=period_from, period_to=period_to)
     pnl = profit_and_loss(db, company_id=company_id, period_from=period_from, period_to=period_to)
     bs = balance_sheet(db, company_id=company_id, period_from=period_from, period_to=period_to)
@@ -342,3 +405,4 @@ def financials(
         "balance_sheet": bs,
         "cash_flow": cf,
     }
+
