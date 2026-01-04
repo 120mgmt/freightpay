@@ -6,7 +6,7 @@ from decimal import Decimal
 
 from flask import Blueprint, request, jsonify
 
-from freightpay.db import db
+from db import db
 from freightpay.models.reconciliation import (
     BankStatement,
     BankStatementLine,
