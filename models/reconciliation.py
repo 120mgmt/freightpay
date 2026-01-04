@@ -1,109 +1,103 @@
-# routes/reconciliation.py
-# FULL FILE — reconciliation endpoints (statement + match + finalize)
+# models/reconciliation.py
+# FULL FILE — reconciliation models (NO circular imports, root-based)
 
-from datetime import datetime, date
+from datetime import date
 from decimal import Decimal
 
-from flask import Blueprint, request, jsonify
+from sqlalchemy import (
+    Column,
+    Integer,
+    String,
+    Date,
+    DateTime,
+    Boolean,
+    ForeignKey,
+    Numeric,
+    Enum,
+)
+from sqlalchemy.orm import relationship
+from sqlalchemy.sql import func
 
 from db import db
-from models.reconciliation import (
-    BankStatement,
-    BankStatementLine,
-    ReconciliationStatus,
-)
-from services.reconciliation import (
-    match_statement_lines,
-    finalize_reconciliation,
-)
-from models.periods import AccountingPeriod
-
-reconciliation_bp = Blueprint("reconciliation_bp", __name__, url_prefix="/reconciliation")
-
-
-def _require_company_id() -> int:
-    cid = request.headers.get("X-Company-Id") or (request.json or {}).get("company_id")
-    if not cid:
-        raise ValueError("Missing company_id")
-    return int(cid)
 
 
 # =========================
-# PART 1 — IMPORT STATEMENT
+# ENUMS
 # =========================
-@reconciliation_bp.route("/statement", methods=["POST"])
-def import_statement():
-    try:
-        company_id = _require_company_id()
-        data = request.json or {}
-
-        stmt = BankStatement(
-            company_id=company_id,
-            account_code=data["account_code"],
-            period=data["period"],
-            statement_start=date.fromisoformat(data["statement_start"]),
-            statement_end=date.fromisoformat(data["statement_end"]),
-            ending_balance=Decimal(data["ending_balance"]),
-        )
-        db.session.add(stmt)
-        db.session.flush()
-
-        for l in data.get("lines", []):
-            db.session.add(
-                BankStatementLine(
-                    statement_id=stmt.id,
-                    txn_date=date.fromisoformat(l["txn_date"]),
-                    description=l["description"],
-                    amount=Decimal(l["amount"]),
-                )
-            )
-
-        db.session.commit()
-        return jsonify({"statement_id": stmt.id}), 201
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": str(e)}), 400
+class ReconciliationStatus(str):
+    OPEN = "open"
+    FINALIZED = "finalized"
 
 
 # =========================
-# OPTIONAL — AUTO MATCH
+# BANK STATEMENT (HEADER)
 # =========================
-@reconciliation_bp.route("/match", methods=["POST"])
-def auto_match():
-    try:
-        data = request.json or {}
-        match_statement_lines(statement_id=int(data["statement_id"]))
-        return jsonify({"matched": True}), 200
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+class BankStatement(db.Model):
+    __tablename__ = "bank_statements"
+
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, nullable=False)
+    account_code = Column(String, nullable=False)
+    period = Column(String, nullable=False)  # YYYY-MM
+
+    statement_start = Column(Date, nullable=False)
+    statement_end = Column(Date, nullable=False)
+    ending_balance = Column(Numeric(12, 2), nullable=False)
+
+    created_at = Column(DateTime, server_default=func.now())
+
+    lines = relationship(
+        "BankStatementLine",
+        back_populates="statement",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
 
 
 # =========================
-# PART 2 — FINALIZE
+# BANK STATEMENT LINE
 # =========================
-@reconciliation_bp.route("/finalize", methods=["POST"])
-def finalize():
-    try:
-        company_id = _require_company_id()
-        data = request.json or {}
+class BankStatementLine(db.Model):
+    __tablename__ = "bank_statement_lines"
 
-        rec = finalize_reconciliation(
-            company_id=company_id,
-            account_code=data["account_code"],
-            period=data["period"],
-        )
+    id = Column(Integer, primary_key=True)
+    statement_id = Column(Integer, ForeignKey("bank_statements.id"), nullable=False)
 
-        return jsonify(
-            {
-                "company_id": str(company_id),
-                "account_code": rec.account_code,
-                "period": rec.period,
-                "is_reconciled": rec.is_reconciled,
-                "ledger_balance": str(rec.ledger_balance),
-                "statement_balance": str(rec.statement_balance),
-            }
-        ), 200
+    txn_date = Column(Date, nullable=False)
+    description = Column(String, nullable=False)
+    amount = Column(Numeric(12, 2), nullable=False)
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 400
+    matched = Column(Boolean, default=False)
+    ledger_entry_id = Column(Integer, nullable=True)
+
+    statement = relationship("BankStatement", back_populates="lines")
+
+
+# =========================
+# RECONCILIATION SUMMARY
+# =========================
+class Reconciliation(db.Model):
+    __tablename__ = "reconciliations"
+
+    id = Column(Integer, primary_key=True)
+    company_id = Column(Integer, nullable=False)
+    account_code = Column(String, nullable=False)
+    period = Column(String, nullable=False)
+
+    ledger_balance = Column(Numeric(12, 2), nullable=False)
+    statement_balance = Column(Numeric(12, 2), nullable=False)
+
+    status = Column(
+        Enum(
+            ReconciliationStatus.OPEN,
+            ReconciliationStatus.FINALIZED,
+            name="reconciliation_status",
+        ),
+        nullable=False,
+        default=ReconciliationStatus.OPEN,
+    )
+
+    is_reconciled = Column(Boolean, default=False)
+    finalized_at = Column(DateTime, nullable=True)
+
+    created_at = Column(DateTime, server_default=func.now())
