@@ -1,5 +1,5 @@
 # routes/reporting.py
-# FULL FILE — corrected so app.py can import reporting_bp
+# FULL FILE — reporting endpoints (exports reporting_bp)
 
 from __future__ import annotations
 
@@ -14,19 +14,21 @@ from services.reporting import (
     financials,
 )
 
-# 🔧 FIX: blueprint name exported as reporting_bp
-reporting_bp = Blueprint("reporting_bp", __name__, url_prefix="/reports")
+reporting_bp = Blueprint("reporting_bp", __name__, url_prefix="/reporting")
 
 
-def _require_company_id() -> str:
+def _require_company_id() -> int:
     cid = (
         request.headers.get("X-Company-Id")
         or request.args.get("company_id")
         or (request.json or {}).get("company_id")
     )
-    if not cid or not str(cid).strip():
+    if cid is None or str(cid).strip() == "":
         raise ValueError("Missing company_id")
-    return str(cid).strip()
+    try:
+        return int(str(cid).strip())
+    except Exception:
+        raise ValueError("company_id must be an integer")
 
 
 def _require_period_range() -> tuple[str, str]:
@@ -129,7 +131,3 @@ def api_financials():
         ), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 400
- 
-       
-      
-  
