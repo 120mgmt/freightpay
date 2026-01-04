@@ -13,8 +13,8 @@ from db import init_db, db  # db.py at repo root
 from routes.reporting import reporting_bp  # REPORTING ROUTES (root-based)
 from routes.reconciliation import reconciliation_bp  # RECONCILIATION ROUTES (root-based)
 
-# Alias for app.py import compatibility
-reporting_bp = reporting
+# Back-compat alias (if anything elsewhere expects `reporting`)
+reporting = reporting_bp
 
 # =========================
 # Load ENV FIRST (CRITICAL)
