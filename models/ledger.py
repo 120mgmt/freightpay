@@ -2,7 +2,6 @@
 # SYSTEM OF RECORD — PRODUCTION GRADE GENERAL LEDGER
 
 import uuid
-from datetime import datetime
 from decimal import Decimal
 
 from sqlalchemy import (
@@ -76,6 +75,10 @@ class Journal(Base):
         passive_deletes=True,
     )
 
+    __table_args__ = (
+        Index("ix_journals_company_period", "company_id", "accounting_period"),
+    )
+
 
 class LedgerEntry(Base):
     """
@@ -133,9 +136,18 @@ class LedgerEntry(Base):
             "(debit = 0 AND credit > 0) OR (credit = 0 AND debit > 0)",
             name="ck_ledger_debit_credit_exclusive",
         ),
+        CheckConstraint(
+            "debit >= 0 AND credit >= 0",
+            name="ck_ledger_non_negative_amounts",
+        ),
         Index(
-            "ix_ledger_company_period",
+            "ix_ledger_company_account",
             "company_id",
             "account_code",
+        ),
+        Index(
+            "ix_ledger_company_journal",
+            "company_id",
+            "journal_id",
         ),
     )
