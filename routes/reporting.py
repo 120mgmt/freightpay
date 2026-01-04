@@ -10,8 +10,8 @@ from typing import Dict, List, Any
 from sqlalchemy.orm import Session
 from sqlalchemy import and_, func
 
-from freightpay.models.ledger import LedgerEntry
-from freightpay.models.chart_of_accounts import Account
+from models.ledger import LedgerEntry
+from models.chart_of_accounts import Account
 
 
 @dataclass(frozen=True)
@@ -61,7 +61,7 @@ def trial_balance(
     """
 
     # local import to avoid circulars
-    from freightpay.models.ledger import Journal
+    from models.ledger import Journal
 
     rows = (
         db.query(
