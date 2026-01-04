@@ -1,12 +1,12 @@
-# freightpay/routes/reporting.py
+# routes/reporting.py
 # REPORTING ROUTES — exposes ledger-based TB / P&L / BS / Cash Flow
 
 from __future__ import annotations
 
 from flask import Blueprint, request, jsonify
 
-from freightpay.db import db
-from freightpay.services.reporting import (
+from db import db
+from services.reporting import (
     trial_balance,
     profit_and_loss,
     balance_sheet,
