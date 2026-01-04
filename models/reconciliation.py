@@ -1,4 +1,4 @@
-# freightpay/routes/reconciliation.py
+# routes/reconciliation.py
 # FULL FILE — reconciliation endpoints (statement + match + finalize)
 
 from datetime import datetime, date
@@ -7,7 +7,9 @@ from decimal import Decimal
 from flask import Blueprint, request, jsonify
 
 from db import db
-
+from models.reconciliation import (
+    BankStatement,
+    BankStatementLine,
     ReconciliationStatus,
 )
 from services.reconciliation import (
