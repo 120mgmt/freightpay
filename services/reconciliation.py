@@ -1,5 +1,5 @@
-# services/reconciliation.py
-# FULL FILE — reconciliation engine (ledger ↔ statement) — ROOT IMPORTS
+# freightpay/services/reconciliation.py
+# FULL FILE — reconciliation engine (ledger ↔ statement) — PACKAGE IMPORTS
 
 from __future__ import annotations
 
@@ -9,10 +9,9 @@ from decimal import Decimal
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from db import db
-from models.reconciliation import BankStatement, ReconciliationStatus
-from models.ledger import LedgerEntry
-from models.periods import AccountingPeriod
+from freightpay.models.accounting_periods import AccountingPeriod
+from freightpay.models.ledger import Journal, LedgerEntry
+from freightpay.models.reconciliation import BankStatement, BankStatementLine, ReconciliationStatus
 
 
 class ReconciliationError(Exception):
@@ -28,26 +27,28 @@ def _as_decimal(v) -> Decimal:
 
 
 def compute_ledger_balance(
+    db: Session,
     *,
     company_id,
     account_code: str,
-    period: str,
+    period_code: str,  # YYYY-MM
 ) -> Decimal:
     """
-    Ledger cash balance for an account up to and including a period (YYYY-MM).
-    Assumes LedgerEntry.period exists and is stored as YYYY-MM.
+    Ledger balance for an account up to and including a period (YYYY-MM).
+    Period is derived from Journal.accounting_period.
     """
-    session: Session = db.session
 
     debit_sum = func.coalesce(func.sum(LedgerEntry.debit), 0)
     credit_sum = func.coalesce(func.sum(LedgerEntry.credit), 0)
 
     row = (
-        session.query(debit_sum.label("debits"), credit_sum.label("credits"))
+        db.query(debit_sum.label("debits"), credit_sum.label("credits"))
+        .join(Journal, Journal.id == LedgerEntry.journal_id)
         .filter(
             LedgerEntry.company_id == company_id,
             LedgerEntry.account_code == account_code,
-            LedgerEntry.period <= period,
+            Journal.company_id == company_id,
+            Journal.accounting_period <= period_code,
         )
         .one()
     )
@@ -56,32 +57,37 @@ def compute_ledger_balance(
     return bal.quantize(Decimal("0.01"))
 
 
-def match_statement_lines(*, statement_id: int) -> None:
+def match_statement_lines(
+    db: Session,
+    *,
+    statement_id,
+) -> None:
     """
-    Auto-match statement lines to ledger entries by exact amount within the same period/account.
-    Marks statement lines as matched and stores matched journal_id when found.
-    """
-    session: Session = db.session
+    Auto-match statement lines to ledger entries by exact net amount within the same period/account.
+    Stores matched_journal_id when found.
 
-    stmt = session.query(BankStatement).filter_by(id=statement_id).one_or_none()
+    Matching rule (v1):
+    - Statement line amount must equal (debit - credit) for a ledger line in the same account+period.
+    """
+
+    stmt = db.query(BankStatement).filter_by(id=statement_id).one_or_none()
     if not stmt:
         raise ReconciliationError("Statement not found")
 
-    # Pull ledger entries for this account/period
+    # Pull ledger entries for this account+period (period is Journal.accounting_period)
     ledger_rows = (
-        session.query(LedgerEntry)
+        db.query(LedgerEntry)
+        .join(Journal, Journal.id == LedgerEntry.journal_id)
         .filter(
             LedgerEntry.company_id == stmt.company_id,
             LedgerEntry.account_code == stmt.account_code,
-            LedgerEntry.period == stmt.period,
+            Journal.company_id == stmt.company_id,
+            Journal.accounting_period == stmt.period_code,
         )
         .all()
     )
 
-    # Import here to avoid circular imports if your ledger models reference reconciliation later
-    from models.reconciliation import BankStatementLine  # noqa
-
-    lines = session.query(BankStatementLine).filter_by(statement_id=stmt.id).all()
+    lines = db.query(BankStatementLine).filter_by(statement_id=stmt.id).all()
 
     for line in lines:
         if getattr(line, "matched", False):
@@ -96,52 +102,63 @@ def match_statement_lines(*, statement_id: int) -> None:
                 line.matched_journal_id = le.journal_id
                 break
 
-    session.commit()
+    db.commit()
 
 
 def finalize_reconciliation(
+    db: Session,
     *,
     company_id,
     account_code: str,
-    period: str,
+    period_code: str,  # YYYY-MM
 ) -> ReconciliationStatus:
     """
     Finalize reconciliation:
-    - Period must exist and be CLOSED (not locked)
-    - Bank statement must exist for account+period
+    - Accounting period must exist and be CLOSED (and not hard-locked)
+    - Bank statement must exist for company+account+period
     - Ledger balance must equal statement ending balance
     - Writes/updates reconciliation_status row
     """
-    session: Session = db.session
 
     ap = (
-        session.query(AccountingPeriod)
-        .filter_by(company_id=company_id, period=period)
+        db.query(AccountingPeriod)
+        .filter(
+            AccountingPeriod.company_id == company_id,
+            AccountingPeriod.period_code == period_code,
+        )
         .one_or_none()
     )
     if not ap:
         raise ReconciliationError("Accounting period not found")
 
-    if getattr(ap, "status", None) != "closed":
+    if not ap.is_closed:
         raise ReconciliationError("Period must be closed before reconciliation")
 
+    if ap.is_hard_locked:
+        raise ReconciliationError("Period is hard locked")
+
     stmt = (
-        session.query(BankStatement)
-        .filter_by(company_id=company_id, account_code=account_code, period=period)
+        db.query(BankStatement)
+        .filter_by(company_id=company_id, account_code=account_code, period_code=period_code)
         .one_or_none()
     )
     if not stmt:
         raise ReconciliationError("Bank statement not imported")
 
-    ledger_balance = compute_ledger_balance(company_id=company_id, account_code=account_code, period=period)
+    ledger_balance = compute_ledger_balance(
+        db,
+        company_id=company_id,
+        account_code=account_code,
+        period_code=period_code,
+    )
     statement_balance = _as_decimal(stmt.ending_balance).quantize(Decimal("0.01"))
 
     if ledger_balance != statement_balance:
         raise ReconciliationError("Ledger balance does not match statement")
 
     rec = (
-        session.query(ReconciliationStatus)
-        .filter_by(company_id=company_id, account_code=account_code, period=period)
+        db.query(ReconciliationStatus)
+        .filter_by(company_id=company_id, account_code=account_code, period_code=period_code)
         .one_or_none()
     )
 
@@ -149,18 +166,18 @@ def finalize_reconciliation(
         rec = ReconciliationStatus(
             company_id=company_id,
             account_code=account_code,
-            period=period,
+            period_code=period_code,
             ledger_balance=ledger_balance,
             statement_balance=statement_balance,
             is_reconciled=True,
             reconciled_at=datetime.utcnow(),
         )
-        session.add(rec)
+        db.add(rec)
     else:
         rec.ledger_balance = ledger_balance
         rec.statement_balance = statement_balance
         rec.is_reconciled = True
         rec.reconciled_at = datetime.utcnow()
 
-    session.commit()
+    db.commit()
     return rec
