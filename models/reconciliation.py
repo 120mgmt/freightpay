@@ -1,89 +1,134 @@
 # models/reconciliation.py
-# FULL FILE — reconciliation models (NO circular imports, root-based)
+# BANK STATEMENTS + RECONCILIATION STATUS — ROOT IMPORTS (Render-safe)
 
 from __future__ import annotations
 
-from enum import Enum as PyEnum
-from sqlalchemy import Column, Integer, String, Date, DateTime, Boolean, ForeignKey, Numeric, Enum
-from sqlalchemy.orm import relationship
+import uuid
+from decimal import Decimal
+from datetime import date
+
+from sqlalchemy import (
+    Column,
+    Date,
+    DateTime,
+    String,
+    Boolean,
+    ForeignKey,
+    Numeric,
+    UniqueConstraint,
+    Index,
+)
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
 
-from db import db
-
-
-# =========================
-# ENUMS (real Python Enum)
-# =========================
-class ReconciliationStatus(str, PyEnum):
-    OPEN = "open"
-    FINALIZED = "finalized"
+from models.base import Base
 
 
-# =========================
-# BANK STATEMENT (HEADER)
-# =========================
-class BankStatement(db.Model):
+class BankStatement(Base):
+    """
+    Imported bank statement header (per account + period).
+    """
+
     __tablename__ = "bank_statements"
 
-    id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, nullable=False, index=True)
-    account_code = Column(String, nullable=False, index=True)
-    period = Column(String, nullable=False, index=True)  # YYYY-MM
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
-    statement_start = Column(Date, nullable=False)
-    statement_end = Column(Date, nullable=False)
-    ending_balance = Column(Numeric(12, 2), nullable=False)
+    company_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    account_code = Column(String(50), nullable=False)  # CASH / BANK account
+    period_code = Column(String(7), nullable=False)    # YYYY-MM
+
+    statement_date = Column(Date, nullable=False)
+    starting_balance = Column(Numeric(14, 2), nullable=False, default=Decimal("0.00"))
+    ending_balance = Column(Numeric(14, 2), nullable=False, default=Decimal("0.00"))
+
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     lines = relationship(
         "BankStatementLine",
         back_populates="statement",
         cascade="all, delete-orphan",
-        lazy="selectin",
+        passive_deletes=True,
+    )
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "account_code",
+            "period_code",
+            name="uq_bank_statement_company_account_period",
+        ),
+        Index("ix_bank_stmt_company_period", "company_id", "period_code"),
     )
 
 
-# =========================
-# BANK STATEMENT LINE
-# =========================
-class BankStatementLine(db.Model):
+class BankStatementLine(Base):
+    """
+    Individual transaction line from a bank statement.
+    """
+
     __tablename__ = "bank_statement_lines"
 
-    id = Column(Integer, primary_key=True)
-    statement_id = Column(Integer, ForeignKey("bank_statements.id"), nullable=False, index=True)
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    statement_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("bank_statements.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
 
     txn_date = Column(Date, nullable=False)
-    description = Column(String, nullable=False)
-    amount = Column(Numeric(12, 2), nullable=False)
+    description = Column(String(255), nullable=True)
+    amount = Column(Numeric(14, 2), nullable=False)
 
     matched = Column(Boolean, nullable=False, default=False)
-    ledger_entry_id = Column(Integer, nullable=True)
+    matched_journal_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("journals.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
 
     statement = relationship("BankStatement", back_populates="lines")
 
-
-# =========================
-# RECONCILIATION SUMMARY
-# =========================
-class Reconciliation(db.Model):
-    __tablename__ = "reconciliations"
-
-    id = Column(Integer, primary_key=True)
-    company_id = Column(Integer, nullable=False, index=True)
-    account_code = Column(String, nullable=False, index=True)
-    period = Column(String, nullable=False, index=True)
-
-    ledger_balance = Column(Numeric(12, 2), nullable=False)
-    statement_balance = Column(Numeric(12, 2), nullable=False)
-
-    status = Column(
-        Enum(ReconciliationStatus, name="reconciliation_status"),
-        nullable=False,
-        default=ReconciliationStatus.OPEN,
+    __table_args__ = (
+        Index("ix_bank_stmt_line_statement", "statement_id"),
+        Index("ix_bank_stmt_line_matched", "matched"),
     )
 
-    is_reconciled = Column(Boolean, nullable=False, default=False)
-    finalized_at = Column(DateTime, nullable=True)
 
-    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+class ReconciliationStatus(Base):
+    """
+    Final reconciliation record (account + period).
+    """
+
+    __tablename__ = "reconciliation_status"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    company_id = Column(UUID(as_uuid=True), nullable=False, index=True)
+    account_code = Column(String(50), nullable=False)
+    period_code = Column(String(7), nullable=False)
+
+    ledger_balance = Column(Numeric(14, 2), nullable=False)
+    statement_balance = Column(Numeric(14, 2), nullable=False)
+
+    is_reconciled = Column(Boolean, nullable=False, default=False)
+    reconciled_at = Column(DateTime(timezone=True), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint(
+            "company_id",
+            "account_code",
+            "period_code",
+            name="uq_reconciliation_company_account_period",
+        ),
+        Index("ix_reconciliation_company_period", "company_id", "period_code"),
+    )
