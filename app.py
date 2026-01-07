@@ -1,4 +1,6 @@
-# app.py  (FULL FILE — DB WIRED + psycopg3 compatible + reporting + reconciliation registered)
+# app.py
+# FreightPay / LedgerHaul API
+# Production-ready — Render-safe — psycopg3 compatible
 
 import os
 from datetime import datetime
@@ -9,57 +11,59 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import stripe
 
-from db import init_db, db  # db.py at repo root
-from routes.reporting import reporting_bp  # REPORTING ROUTES (root-based)
-from routes.reconciliation import reconciliation_bp  # RECONCILIATION ROUTES (root-based)
+from db import init_db, db
 
-# Back-compat alias (if anything elsewhere expects `reporting`)
-reporting = reporting_bp
+# ROUTES (ROOT-BASED, NO freightpay.* IMPORTS)
+from routes.reporting import reporting_bp
+from routes.reconciliation import reconciliation_bp
 
 # =========================
 # Load ENV FIRST (CRITICAL)
 # =========================
-load_dotenv()  # loads .env from project root into os.environ
+load_dotenv()
 
 # =========================
-# Database URL check (SAFE)
+# DATABASE URL CHECK
 # =========================
 DATABASE_URL = os.getenv("DATABASE_URL")
 print("DATABASE_URL_PRESENT =", bool(DATABASE_URL))
-if DATABASE_URL:
-    try:
-        u = urlsplit(DATABASE_URL)
-        netloc = u.netloc
-        if "@" in netloc and ":" in netloc.split("@")[0]:
-            userinfo, hostinfo = netloc.split("@", 1)
-            user = userinfo.split(":", 1)[0]
-            netloc = f"{user}:****@{hostinfo}"
-        print(
-            "DATABASE_URL_VALUE_MASKED =",
-            urlunsplit((u.scheme, netloc, u.path, u.query, u.fragment)),
-        )
-    except Exception:
-        print("DATABASE_URL_VALUE_MASKED = (mask failed)")
-else:
-    raise RuntimeError("DATABASE_URL is required to start the app")
+
+if not DATABASE_URL:
+    raise RuntimeError("DATABASE_URL is required")
+
+try:
+    u = urlsplit(DATABASE_URL)
+    netloc = u.netloc
+    if "@" in netloc and ":" in netloc.split("@")[0]:
+        userinfo, hostinfo = netloc.split("@", 1)
+        user = userinfo.split(":", 1)[0]
+        netloc = f"{user}:****@{hostinfo}"
+    print(
+        "DATABASE_URL_VALUE_MASKED =",
+        urlunsplit((u.scheme, netloc, u.path, u.query, u.fragment)),
+    )
+except Exception:
+    print("DATABASE_URL_VALUE_MASKED = (mask failed)")
 
 # =========================
-# App Initialization
+# APP INIT
 # =========================
 app = Flask(__name__)
 CORS(app)
 
-# Wire DB + migrations
+# =========================
+# DATABASE INIT
+# =========================
 init_db(app)
 
 # =========================
-# Register Blueprints
+# REGISTER BLUEPRINTS
 # =========================
 app.register_blueprint(reporting_bp)
 app.register_blueprint(reconciliation_bp)
 
 # =========================
-# Environment Variables
+# ENV VARS
 # =========================
 APP_ENV = os.getenv("APP_ENV", "production")
 BASE_URL = os.getenv("BASE_URL", "https://api.ledgerhaul.com")
@@ -74,15 +78,17 @@ STRIPE_PAYROLL_PRICE_ID = os.getenv("STRIPE_PAYROLL_PRICE_ID")
 STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID = os.getenv("STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID")
 
 if not STRIPE_SECRET_KEY or not STRIPE_WEBHOOK_SECRET:
-    raise RuntimeError("Missing STRIPE_SECRET_KEY or STRIPE_WEBHOOK_SECRET")
+    raise RuntimeError("Stripe keys missing")
 
 stripe.api_key = STRIPE_SECRET_KEY
 
-
-def _require(value: str | None, key: str) -> str:
-    if not value or not value.strip():
+# =========================
+# HELPERS
+# =========================
+def _require(v: str | None, key: str) -> str:
+    if not v or not v.strip():
         raise RuntimeError(f"Missing required env var: {key}")
-    return value.strip()
+    return v.strip()
 
 
 def _safe_int(v, default=0) -> int:
@@ -93,6 +99,9 @@ def _safe_int(v, default=0) -> int:
         return default
 
 
+# =========================
+# PRICING CONFIG
+# =========================
 PRICING = {
     "combo": {
         "name": "Payroll + Bookkeeping",
@@ -117,8 +126,10 @@ _require(PRICING["payroll_only"]["base_price_id"], "STRIPE_PAYROLL_PRICE_ID")
 _require(PRICING["payroll_only"]["per_employee_price_id"], "STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID")
 _require(PRICING["bookkeeping_only"]["base_price_id"], "STRIPE_BOOKKEEPING_PRICE_ID")
 
-
-@app.route("/health", methods=["GET"])
+# =========================
+# HEALTH / DB
+# =========================
+@app.route("/health")
 def health():
     return jsonify(
         {
@@ -129,7 +140,7 @@ def health():
     )
 
 
-@app.route("/db/ping", methods=["GET"])
+@app.route("/db/ping")
 def db_ping():
     try:
         with db.engine.connect() as conn:
@@ -139,11 +150,14 @@ def db_ping():
         return jsonify({"db": "error", "detail": str(e)}), 500
 
 
+# =========================
+# BILLING
+# =========================
 @app.route("/billing/checkout", methods=["POST"])
 def create_checkout():
     data = request.json or {}
     plan_key = (data.get("plan") or "").strip()
-    employees = _safe_int(data.get("employees", 0), default=0)
+    employees = _safe_int(data.get("employees", 0))
 
     if plan_key not in PRICING:
         return jsonify({"error": "Invalid plan"}), 400
@@ -177,37 +191,53 @@ def create_checkout():
 @app.route("/billing/webhook", methods=["POST"])
 def stripe_webhook():
     payload = request.data
-    sig_header = request.headers.get("Stripe-Signature")
+    sig = request.headers.get("Stripe-Signature")
 
     try:
-        event = stripe.Webhook.construct_event(payload, sig_header, STRIPE_WEBHOOK_SECRET)
+        event = stripe.Webhook.construct_event(payload, sig, STRIPE_WEBHOOK_SECRET)
     except Exception:
-        return jsonify({"error": "Webhook signature verification failed"}), 400
+        return jsonify({"error": "Invalid webhook"}), 400
 
     print("STRIPE_EVENT =", event.get("type"))
     return jsonify({"received": True})
 
 
+# =========================
+# LEGAL
+# =========================
 @app.route("/legal/terms")
 def terms():
-    return jsonify({"terms": "FreightPay Terms of Service"})
+    return jsonify({"terms": "LedgerHaul Terms of Service"})
 
 
 @app.route("/legal/privacy")
 def privacy():
-    return jsonify({"privacy": "FreightPay Privacy Policy"})
+    return jsonify({"privacy": "LedgerHaul Privacy Policy"})
 
 
 @app.route("/legal/refund")
 def refund():
-    return jsonify({"refund": "FreightPay Refund Policy"})
+    return jsonify({"refund": "LedgerHaul Refund Policy"})
 
 
+# =========================
+# ROOT
+# =========================
 @app.route("/")
 def index():
-    return jsonify({"app": "FreightPay", "version": "v5-production", "status": "live"})
+    return jsonify(
+        {
+            "app": "LedgerHaul",
+            "module": "FreightPay",
+            "version": "v5-production",
+            "status": "live",
+        }
+    )
 
 
+# =========================
+# LOCAL RUN
+# =========================
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
