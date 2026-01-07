@@ -1,51 +1,51 @@
-# db.py  (FULL FILE — psycopg3 compatible, production-safe)
+# db.py
+# PRODUCTION-SAFE DB + MIGRATIONS (Render / psycopg3 compatible)
+
+from __future__ import annotations
 
 import os
+from urllib.parse import urlsplit, urlunsplit
 
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.engine import make_url
-from sqlalchemy.pool import NullPool
+from flask_migrate import Migrate
 
 db = SQLAlchemy()
+migrate = Migrate()
 
 
 def _normalize_database_url(url: str) -> str:
-    """
-    Ensure psycopg3 driver is used.
-    Accepts postgres:// or postgresql:// and upgrades to postgresql+psycopg://
-    """
-    u = make_url(url)
-    if u.drivername in ("postgres", "postgresql"):
-        return u.set(drivername="postgresql+psycopg").render_as_string(hide_password=False)
-    if u.drivername == "postgresql+psycopg":
-        return url
-    return url
+    # Render compatibility (postgres:// -> postgresql://)
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql://", 1)
+
+    # If no explicit driver is specified, force psycopg3 so it never tries psycopg2
+    parts = urlsplit(url)
+    scheme = parts.scheme
+
+    # Examples:
+    #   postgresql://...          -> postgresql+psycopg://...
+    #   postgresql+psycopg://...  -> unchanged
+    if scheme == "postgresql":
+        scheme = "postgresql+psycopg"
+
+    return urlunsplit((scheme, parts.netloc, parts.path, parts.query, parts.fragment))
 
 
 def init_db(app):
-    raw_url = os.getenv("DATABASE_URL")
-    if not raw_url:
+    database_url = os.getenv("DATABASE_URL")
+    if not database_url:
         raise RuntimeError("DATABASE_URL is required")
 
-    db_url = _normalize_database_url(raw_url)
+    database_url = _normalize_database_url(database_url)
 
     app.config.update(
-        SQLALCHEMY_DATABASE_URI=db_url,
+        SQLALCHEMY_DATABASE_URI=database_url,
         SQLALCHEMY_TRACK_MODIFICATIONS=False,
         SQLALCHEMY_ENGINE_OPTIONS={
-            # Render-friendly defaults
-            "poolclass": NullPool,
             "pool_pre_ping": True,
-            "future": True,
+            "pool_recycle": 300,
         },
     )
 
     db.init_app(app)
-
-    # Optional sanity check (does not create tables)
-    with app.app_context():
-        try:
-            with db.engine.connect() as conn:
-                conn.exec_driver_sql("SELECT 1")
-        except Exception as e:
-            raise RuntimeError(f"Database connection failed: {e}") from e
+    migrate.init_app(app, db)
