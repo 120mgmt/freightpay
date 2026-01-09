@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from freightpay.legal.models import LegalAcceptance
+from legal.models import LegalAcceptance
 from models import User
 
 
