@@ -7,17 +7,18 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from utils.database import get_db
-from freightpay.legal.seed import seed_legal_versions
+from db import db
+from legal.seed import seed_legal_versions
 
 
-def run_seeds() -> None:
+def run_seeds(session: Session | None = None) -> None:
     """
-    Called by: flask --app freightpay:create_app seed
+    Seed runner.
+    NOTE: Must be executed inside an active Flask app context if `session` is not provided.
     """
-    db: Session = get_db()
+    s: Session = session or db.session
 
     # Legal (version guards)
-    seed_legal_versions(db)
+    seed_legal_versions(s)
 
-    db.commit()
+    s.commit()
