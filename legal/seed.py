@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from sqlalchemy.orm import Session
 
-from freightpay.legal.service import (
+from legal.service import (
     CURRENT_TERMS_VERSION,
     CURRENT_PRIVACY_VERSION,
     CURRENT_REFUND_VERSION,
