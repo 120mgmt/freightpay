@@ -3,8 +3,8 @@
 # Status: Full deployment – production v5
 # Date: 2026-01-01
 
-from freightpay.legal.routes import legal_bp
-from freightpay.legal.routes_acceptance import legal_acceptance_bp
+from legal.routes import legal_bp
+from legal.routes_acceptance import legal_acceptance_bp
 
 
 def register_legal(app):
