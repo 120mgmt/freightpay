@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from utils.database import get_db
 from utils.auth import require_auth
 from models import User
-from freightpay.legal.service import (
+from legal.service import (
     has_current_legal_acceptance,
     record_legal_acceptance,
 )
