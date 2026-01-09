@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from utils.database import get_db
 from models import User
-from freightpay.legal.service import has_current_legal_acceptance
+from legal.service import has_current_legal_acceptance
 
 F = TypeVar("F", bound=Callable[..., Any])
 
