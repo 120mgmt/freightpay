@@ -5,10 +5,10 @@
 
 from flask import Flask
 
-from utils.database import init_db
-from freightpay.legal import register_legal
-from freightpay.app_factory_hooks import apply_legal_enforcement
-from freightpay.app_factory_cli import register_app_cli
+from db import init_db
+from legal import register_legal
+from app_factory_hooks import apply_legal_enforcement
+from app_factory_cli import register_app_cli
 
 
 def create_app() -> Flask:
@@ -30,3 +30,4 @@ def create_app() -> Flask:
     apply_legal_enforcement(app)
 
     return app
+
