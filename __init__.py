@@ -5,7 +5,7 @@
 
 from flask import Flask
 
-from db import init_db
+from .db import init_db
 from legal import register_legal
 from app_factory_hooks import apply_legal_enforcement
 from app_factory_cli import register_app_cli
@@ -30,4 +30,5 @@ def create_app() -> Flask:
     apply_legal_enforcement(app)
 
     return app
+
 
