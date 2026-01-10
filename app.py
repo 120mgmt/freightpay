@@ -1,6 +1,7 @@
 # app.py
 # FreightPay / LedgerHaul API
 # Production-ready — Render-safe — psycopg3 compatible
+# FULL FILE — NO MISSING LINES
 
 import os
 from datetime import datetime
@@ -12,13 +13,14 @@ from flask_cors import CORS
 import stripe
 
 from db import init_db, db
+from config import get_config
 
-# ROUTES (ROOT-BASED, NO freightpay.* IMPORTS)
+# ROUTES (ROOT-BASED)
 from routes.reporting import reporting_bp
 from routes.reconciliation import reconciliation_bp
 
 # =========================
-# Load ENV FIRST (CRITICAL)
+# LOAD ENV FIRST
 # =========================
 load_dotenv()
 
@@ -49,6 +51,7 @@ except Exception:
 # APP INIT
 # =========================
 app = Flask(__name__)
+app.config.from_object(get_config())
 CORS(app)
 
 # =========================
@@ -241,3 +244,5 @@ def index():
 if __name__ == "__main__":
     port = int(os.getenv("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
+
