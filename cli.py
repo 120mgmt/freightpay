@@ -8,7 +8,7 @@ from __future__ import annotations
 import click
 from flask import Flask
 
-from freightpay.seed import run_seeds
+from seed import run_seeds
 
 
 def register_cli(app: Flask) -> None:
