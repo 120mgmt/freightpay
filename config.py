@@ -1,4 +1,5 @@
-# config.py — FULL, RESTORED, PRODUCTION-READY (Render-safe)
+# config.py
+# FULL, PRODUCTION-READY CONFIG (Render-safe)
 
 from __future__ import annotations
 import os
@@ -12,23 +13,14 @@ class BaseConfig:
     SECRET_KEY = os.getenv("SECRET_KEY", "change-me")
     JSON_SORT_KEYS = False
 
-    # Database (Render-safe default)
-    DATABASE_URL = os.getenv(
-        "DATABASE_URL",
-        "sqlite:////tmp/app.db",
-    )
+    # Database
+    DATABASE_URL = os.getenv("DATABASE_URL")
 
-    # Payroll
-    PAYROLL_DB_PATH = os.getenv("PAYROLL_DB_PATH", "/tmp/payroll.db")
+    # Stripe
+    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
+    STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-    # Stripe / Billing
-    STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY", "")
-    STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
-    SUBSCRIPTION_REQUIRED = (
-        os.getenv("SUBSCRIPTION_REQUIRED", "true").lower() == "true"
-    )
-
-    # Security / Cookies
+    # Security
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = True
