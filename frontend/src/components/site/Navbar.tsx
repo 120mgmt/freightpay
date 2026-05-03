@@ -28,11 +28,11 @@ export const Navbar = () => {
   };
 
   return (
-    <header className="fixed top-0 inset-x-0 z-50 h-[65px] flex items-center bg-[rgba(8,13,17,0.7)] backdrop-blur-[24px] border-b border-border">
+    <header className="fixed top-0 inset-x-0 z-50 h-[80px] flex items-center bg-[rgba(8,13,17,0.7)] backdrop-blur-[24px] border-b border-border">
       <nav className="container mx-auto flex items-center justify-between px-6">
         {/* Logo */}
         <a href="/" className="flex items-center" onClick={(e) => { e.preventDefault(); navigate("/"); }}>
-          <img src="/Logo.png" alt="LedgerHaul" className="h-10 w-auto" />
+          <img src="/Logo.png" alt="LedgerHaul" className="h-14 w-auto" />
         </a>
 
         {/* Desktop nav pill */}

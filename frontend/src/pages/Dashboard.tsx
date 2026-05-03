@@ -32,10 +32,10 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-background text-foreground">
       {/* Top bar */}
-      <header className="h-[65px] flex items-center border-b border-border px-6"
+      <header className="h-[80px] flex items-center border-b border-border px-6"
         style={{ background: "rgba(8,13,17,0.7)", backdropFilter: "blur(24px)" }}>
         <Link to="/" className="flex items-center">
-          <img src="/Logo.png" alt="LedgerHaul" className="h-8 w-auto" />
+          <img src="/Logo.png" alt="LedgerHaul" className="h-14 w-auto" />
         </Link>
         <div className="ml-auto flex items-center gap-4">
           <div className="text-right hidden sm:block">
@@ -56,7 +56,7 @@ const Dashboard = () => {
 
       <div className="flex">
         {/* Sidebar */}
-        <aside className="hidden md:flex flex-col w-60 border-r border-border p-4 gap-1 min-h-[calc(100vh-65px)]"
+        <aside className="hidden md:flex flex-col w-60 border-r border-border p-4 gap-1 min-h-[calc(100vh-80px)]"
           style={{ background: "rgba(14,20,27,0.5)" }}>
           {[
             { icon: LayoutDashboard, label: "Dashboard", active: true },
