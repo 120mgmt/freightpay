@@ -1,0 +1,78 @@
+from __future__ import annotations
+
+import sqlite3
+from decimal import Decimal
+from typing import Optional
+
+DB_PATH = "./instance/freightpay.sqlite"
+
+
+def _connect():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_cpm_audit_schema() -> None:
+    with _connect() as conn:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS cpm_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                company_id INTEGER NOT NULL,
+                decision TEXT NOT NULL,            -- approve | review | reject
+                target_cpm TEXT NOT NULL,
+                offered_cpm TEXT,
+                trip_miles TEXT,
+                floor_rate_total TEXT,
+                source TEXT NOT NULL,              -- payroll | ledger | load
+                reference_id TEXT,                 -- load_id / settlement_id
+                created_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
+            """
+        )
+        conn.commit()
+
+
+def log_cpm_decision(
+    *,
+    company_id: int,
+    decision: str,
+    target_cpm: Decimal,
+    offered_cpm: Optional[Decimal],
+    trip_miles: Optional[Decimal],
+    floor_rate_total: Optional[Decimal],
+    source: str,
+    reference_id: Optional[str] = None,
+) -> None:
+    """
+    Persist CPM decision for audit + dispute defense.
+    """
+    init_cpm_audit_schema()
+
+    with _connect() as conn:
+        conn.execute(
+            """
+            INSERT INTO cpm_audit (
+                company_id,
+                decision,
+                target_cpm,
+                offered_cpm,
+                trip_miles,
+                floor_rate_total,
+                source,
+                reference_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                int(company_id),
+                decision,
+                str(target_cpm),
+                str(offered_cpm) if offered_cpm is not None else None,
+                str(trip_miles) if trip_miles is not None else None,
+                str(floor_rate_total) if floor_rate_total is not None else None,
+                source,
+                reference_id,
+            ),
+        )
+        conn.commit()

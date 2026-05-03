@@ -1,0 +1,36 @@
+import requests
+
+class GustoClient:
+    def __init__(self, client_id, client_secret, redirect_uri):
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self.redirect_uri = redirect_uri
+        self.base_url = "https://api.gusto.com"
+        self.session = requests.Session()
+
+    def _get(self, path, params=None):
+        r = self.session.get(f"{self.base_url}{path}", params=params, timeout=30)
+        r.raise_for_status()
+        return r.json()
+
+    def _post(self, path, payload=None):
+        r = self.session.post(
+            f"{self.base_url}{path}",
+            json=payload or {},
+            timeout=30,
+        )
+        r.raise_for_status()
+        return r.json()
+
+    def get_access_token(self, code):
+        response = self._post(
+            "/oauth/token",
+            data={
+                "client_id": self.client_id,
+                "client_secret": self.client_secret,
+                "redirect_uri": self.redirect_uri,
+                "grant_type": "authorization_code",
+                "code": code,
+            },
+        )
+        return response["access_token"]

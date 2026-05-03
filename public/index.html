@@ -1,0 +1,719 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LedgerHaul — Financial Clarity for Every Mile</title>
+  <meta name="description" content="Payroll, contractor settlements, double-entry bookkeeping, and Stripe subscription billing — engineered as one API-first service for trucking companies.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="assets/css/theme.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+  <style>
+    /* Hero gradient background */
+    .hero-bg {
+      background:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(56,211,159,0.15) 0%, transparent 60%),
+        radial-gradient(ellipse at 80% 80%, rgba(56,211,159,0.05) 0%, transparent 50%),
+        var(--bg);
+    }
+
+    /* Hero stat card */
+    .stat-card {
+      background: rgba(18,26,36,0.92);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 18px 22px;
+      backdrop-filter: blur(8px);
+    }
+
+    /* Tech stack pill */
+    .stack-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-muted);
+      white-space: nowrap;
+    }
+
+    .stack-pill .dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+
+    /* Step number */
+    .step-num {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(56,211,159,0.12);
+      border: 1px solid rgba(56,211,159,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--green);
+      flex-shrink: 0;
+    }
+
+    /* Section with grid bg */
+    .section-alt {
+      background: rgba(18,26,36,0.4);
+      border-top: 1px solid var(--border);
+      border-bottom: 1px solid var(--border);
+    }
+
+    /* Mobile menu open state */
+    .nav-mobile.open { display: flex; }
+
+    /* Scroll the stack pills */
+    .stack-scroll {
+      display: flex;
+      gap: 10px;
+      overflow-x: auto;
+      padding-bottom: 4px;
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+    .stack-scroll::-webkit-scrollbar { display: none; }
+
+    .settlement-preview {
+      background: rgba(18,26,36,0.96);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      overflow: hidden;
+    }
+
+    .settlement-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 20px;
+      border-bottom: 1px solid var(--border-muted);
+      font-size: 14px;
+    }
+
+    .settlement-row:last-child { border-bottom: none; }
+    .settlement-row .label { color: var(--text-muted); }
+    .settlement-row .amount { font-weight: 600; color: var(--text); font-family: 'JetBrains Mono', monospace; }
+    .settlement-row .amount.positive { color: var(--ok-fg); }
+    .settlement-row .amount.negative { color: var(--err-fg); }
+
+    /* trust badges */
+    .trust-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      color: var(--text-muted);
+    }
+
+    .trust-item svg { color: var(--green); flex-shrink: 0; }
+  </style>
+</head>
+<body>
+
+<!-- ======================================================
+     NAVIGATION
+     ====================================================== -->
+<header>
+  <nav class="nav">
+    <div class="container nav-inner">
+      <a href="/" class="nav-logo">
+        <img src="assets/images/logo.png" alt="LedgerHaul">
+      </a>
+
+      <ul class="nav-links">
+        <li><a href="product.html">Platform</a></li>
+        <li><a href="product.html#capabilities">Capabilities</a></li>
+        <li><a href="pricing.html">Pricing</a></li>
+        <li><a href="legal/terms.html">Legal</a></li>
+      </ul>
+
+      <div class="nav-actions">
+        <a href="app/login.html" class="btn btn-secondary btn-sm">Log in</a>
+        <a href="app/signup.html" class="btn btn-primary btn-sm">Create Account</a>
+      </div>
+
+      <button class="nav-hamburger" onclick="toggleMenu()" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+
+    <!-- Mobile menu -->
+    <div class="container">
+      <div class="nav-mobile" id="mobileMenu">
+        <a href="product.html">Platform</a>
+        <a href="product.html#capabilities">Capabilities</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="legal/terms.html">Legal</a>
+        <div class="nav-mobile-actions">
+          <a href="app/login.html" class="btn btn-secondary" style="width:100%;justify-content:center;">Log in</a>
+          <a href="app/signup.html" class="btn btn-primary" style="width:100%;justify-content:center;">Create Account</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>
+
+<!-- ======================================================
+     HERO
+     ====================================================== -->
+<section class="hero-bg" style="padding: 100px 0 80px;">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
+
+      <!-- Left: Copy -->
+      <div class="animate-fade-up">
+        <div class="eyebrow" style="margin-bottom:24px;">
+          <svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+          Trucking-First Financial Operations
+        </div>
+
+        <h1 class="heading-1" style="margin-bottom:20px;">
+          Financial Clarity<br>
+          <span class="text-green">for Every Mile</span>
+        </h1>
+
+        <p class="body-lg" style="margin-bottom:36px;max-width:480px;">
+          Payroll, contractor settlements, double-entry bookkeeping, and Stripe subscription billing — engineered as one API-first service for trucking operations.
+        </p>
+
+        <div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:48px;">
+          <a href="app/signup.html" class="btn btn-primary btn-lg">
+            Start free trial
+            <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
+          </a>
+          <a href="product.html" class="btn btn-secondary btn-lg">View Product</a>
+        </div>
+
+        <div style="display:flex;gap:20px;align-items:center;flex-wrap:wrap;">
+          <span style="font-size:13px;color:var(--text-subtle);">No credit card required</span>
+          <span style="color:var(--border);">·</span>
+          <span style="font-size:13px;color:var(--text-subtle);">Cancel anytime</span>
+          <span style="color:var(--border);">·</span>
+          <span style="font-size:13px;color:var(--text-subtle);">Production-ready in minutes</span>
+        </div>
+      </div>
+
+      <!-- Right: Stat Cards -->
+      <div class="animate-fade-up delay-2" style="position:relative;">
+        <!-- Terminal header -->
+        <div style="background:rgba(8,13,20,0.9);border:1px solid var(--border);border-radius:16px;padding:0;overflow:hidden;box-shadow:var(--shadow-elevated);">
+          <div style="display:flex;align-items:center;gap:8px;padding:14px 20px;border-bottom:1px solid var(--border-muted);">
+            <span style="width:12px;height:12px;border-radius:50%;background:#FF5F57;"></span>
+            <span style="width:12px;height:12px;border-radius:50%;background:#FFBD2E;"></span>
+            <span style="width:12px;height:12px;border-radius:50%;background:#28C840;"></span>
+            <span style="font-family:monospace;font-size:12px;color:var(--text-subtle);margin-left:8px;">POST /api/payroll/run</span>
+          </div>
+          <div style="padding:20px;font-family:'JetBrains Mono',monospace;font-size:12px;line-height:1.8;color:var(--text-muted);">
+            <div><span style="color:#82CFAF;">POST</span> /api/payroll/run</div>
+            <div style="margin-top:8px;color:var(--text-subtle);">{</div>
+            <div style="padding-left:16px;"><span style="color:#9FF2C9;">"driver_id"</span>: <span style="color:#CE9178;">"drv_7R34A"</span>,</div>
+            <div style="padding-left:16px;"><span style="color:#9FF2C9;">"miles"</span>: <span style="color:#B5CEA8;">2137</span>,</div>
+            <div style="padding-left:16px;"><span style="color:#9FF2C9;">"pay_type"</span>: <span style="color:#CE9178;">"per_mile"</span></div>
+            <div style="color:var(--text-subtle);">}</div>
+            <div style="margin-top:12px;padding:10px;background:rgba(56,211,159,0.06);border:1px solid rgba(56,211,159,0.15);border-radius:8px;">
+              <div><span style="color:#9FF2C9;">"net_pay"</span>: <span style="color:#B5CEA8;">$1,184.30</span></div>
+              <div><span style="color:#9FF2C9;">"status"</span>: <span style="color:#82CFAF;">"settled"</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Floating stat cards -->
+        <div class="stat-card animate-float" style="position:absolute;top:-24px;right:-16px;min-width:160px;">
+          <div style="font-size:11px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px;">Weekly Settlements</div>
+          <div style="font-size:24px;font-weight:800;color:#FFF;letter-spacing:-0.02em;">$84,320</div>
+          <div style="font-size:12px;color:var(--ok-fg);margin-top:2px;">↑ 12.4% this week</div>
+        </div>
+
+        <div class="stat-card" style="position:absolute;bottom:-20px;left:-16px;min-width:200px;">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+            <span class="pill pill-ok"><span class="dot animate-pulse-dot"></span>Live</span>
+          </div>
+          <div style="font-size:13px;color:var(--text-muted);">Production ready · 18 drivers active</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- Trusted by -->
+<div class="section-alt" style="padding:28px 0;">
+  <div class="container">
+    <div style="display:flex;align-items:center;gap:24px;flex-wrap:wrap;">
+      <span style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-subtle);white-space:nowrap;">Trusted by carriers moving</span>
+      <div class="stack-scroll">
+        <span style="font-size:14px;font-weight:600;color:var(--text-subtle);">Northbound</span>
+        <span style="color:var(--border);">·</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text-subtle);">Pacific Haul</span>
+        <span style="color:var(--border);">·</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text-subtle);">Ridgeline</span>
+        <span style="color:var(--border);">·</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text-subtle);">Meridian Freight</span>
+        <span style="color:var(--border);">·</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text-subtle);">Cascade Log</span>
+        <span style="color:var(--border);">·</span>
+        <span style="font-size:14px;font-weight:600;color:var(--text-subtle);">Ironroad</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Tech Stack -->
+<div style="padding:20px 0;border-bottom:1px solid var(--border);">
+  <div class="container">
+    <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+      <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;color:var(--text-subtle);">Built on a proven stack</span>
+      <div class="stack-scroll">
+        <span class="stack-pill"><span class="dot"></span>PostgreSQL</span>
+        <span class="stack-pill"><span class="dot"></span>Alembic</span>
+        <span class="stack-pill"><span class="dot"></span>Flask-Migrate</span>
+        <span class="stack-pill"><span class="dot"></span>Stripe</span>
+        <span class="stack-pill"><span class="dot"></span>JWT</span>
+        <span class="stack-pill"><span class="dot"></span>Render</span>
+        <span class="stack-pill"><span class="dot"></span>Webhooks</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================================================
+     FEATURES GRID
+     ====================================================== -->
+<section class="section" id="platform">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:56px;">
+      <div class="eyebrow" style="margin:0 auto 20px;">Platform</div>
+      <h2 class="heading-2" style="margin-bottom:16px;">Every layer engineered<br>for production.</h2>
+      <p class="body-lg" style="max-width:520px;margin:0 auto;">LedgerHaul ships a complete backend — not a starter kit. Authentication, persistence, billing, and bookkeeping interlocked by design.</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;">
+
+      <!-- Auth & RBAC -->
+      <div class="feature-card">
+        <div class="icon-wrap">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </div>
+        <h3 class="heading-4" style="margin-bottom:8px;">Auth &amp; RBAC</h3>
+        <p class="body-sm" style="margin-bottom:14px;">JWT-based authentication with admin, client, and driver roles. Route-level permission enforcement out of the box.</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span class="pill pill-neutral">admin</span>
+          <span class="pill pill-neutral">client</span>
+          <span class="pill pill-neutral">driver</span>
+        </div>
+      </div>
+
+      <!-- Database & persistence -->
+      <div class="feature-card">
+        <div class="icon-wrap">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></svg>
+        </div>
+        <h3 class="heading-4" style="margin-bottom:8px;">Database &amp; persistence</h3>
+        <p class="body-sm" style="margin-bottom:14px;">PostgreSQL in production. SQLite for local dev. SQL Alchemy ORM with Alembic and Flask-Migrate migrations.</p>
+        <span class="pill pill-info">alembic · upgrade head</span>
+      </div>
+
+      <!-- Stripe subscriptions -->
+      <div class="feature-card">
+        <div class="icon-wrap">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+        </div>
+        <h3 class="heading-4" style="margin-bottom:8px;">Stripe subscriptions</h3>
+        <p class="body-sm" style="margin-bottom:14px;">Environment-driven Price IDs. Combo, Payroll Only, and Bookkeeping plans with full webhook handling.</p>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;">
+          <span class="pill pill-neutral">checkout</span>
+          <span class="pill pill-neutral">session</span>
+          <span class="pill pill-neutral">machine</span>
+        </div>
+      </div>
+
+      <!-- Double-entry bookkeeping -->
+      <div class="feature-card">
+        <div class="icon-wrap">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 11h.01M12 11h.01M15 11h.01M4 19h16a2 2 0 002-2V7a2 2 0 00-2-2H4a2 2 0 00-2 2v10a2 2 0 002 2z"/></svg>
+        </div>
+        <h3 class="heading-4" style="margin-bottom:8px;">Double-entry bookkeeping</h3>
+        <p class="body-sm" style="margin-bottom:14px;">Every transaction posts balanced ledger entries. Audit-ready financial records with immutable history.</p>
+        <div class="code-block" style="padding:10px 14px;font-size:12px;line-height:1.6;">
+          <div><span class="kw">DEBIT</span>  Payroll Exp $1,184.30</div>
+          <div><span class="kw">CREDIT</span> Cash         $1,184.30</div>
+        </div>
+      </div>
+
+      <!-- Migration tooling -->
+      <div class="feature-card">
+        <div class="icon-wrap">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+        </div>
+        <h3 class="heading-4" style="margin-bottom:8px;">Migration tooling</h3>
+        <p class="body-sm" style="margin-bottom:14px;">Production-safe migrations with version control. Roll forward, roll back, no downtime required.</p>
+        <div class="code-block" style="padding:10px 14px;font-size:12px;">
+          flask db migrate -m <span class="str">"..."</span>
+        </div>
+      </div>
+
+      <!-- Billing enforcement -->
+      <div class="feature-card">
+        <div class="icon-wrap">
+          <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        </div>
+        <h3 class="heading-4" style="margin-bottom:8px;">Billing enforcement</h3>
+        <p class="body-sm" style="margin-bottom:14px;">Plan limits enforced at the API layer. Per-worker pricing, flat-rate options, automatic seat counting.</p>
+        <span class="pill pill-ok">
+          <span class="dot"></span>
+          plan_enforcement: ok
+        </span>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================
+     SETTLEMENTS SECTION
+     ====================================================== -->
+<section class="section section-alt" id="capabilities">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:center;">
+
+      <div>
+        <div class="eyebrow" style="margin-bottom:20px;">Settlements Engine</div>
+        <h2 class="heading-2" style="margin-bottom:20px;">Contractor settlements,<br>calculated correctly.<br>Every time.</h2>
+        <p class="body" style="margin-bottom:28px;">Run flat, per-load, per-mile, percentage, and salary models in the same call. Deduct fuel advances, IFTA, escrow, insurance, and post every cent to the ledger automatically.</p>
+
+        <ul style="display:flex;flex-direction:column;gap:12px;margin-bottom:32px;list-style:none;">
+          <li class="trust-item">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            Automatic fuel advance reconciliation and IFTA deductions
+          </li>
+          <li class="trust-item">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            1099-NEC and W-2 export, year-round
+          </li>
+          <li class="trust-item">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            Idempotent calculations with full audit trail
+          </li>
+          <li class="trust-item">
+            <svg width="18" height="18" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+            Webhook events on every settlement state change
+          </li>
+        </ul>
+
+        <a href="app/signup.html" class="btn btn-primary">Start free trial</a>
+      </div>
+
+      <!-- Settlement preview -->
+      <div>
+        <div class="settlement-preview">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;border-bottom:1px solid var(--border);">
+            <div>
+              <div style="font-size:13px;font-weight:700;color:#FFF;">Run_MR342 · Week 17</div>
+              <div style="font-size:12px;color:var(--text-subtle);">Marcus Reyes · drv_7R34A</div>
+            </div>
+            <span class="pill pill-ok"><span class="dot"></span>Settled</span>
+          </div>
+          <div class="settlement-row">
+            <span class="label">Driver</span>
+            <span class="amount">Marcus Reyes · drv_7R34A</span>
+          </div>
+          <div class="settlement-row">
+            <span class="label">Loaded miles · 2,137 mi</span>
+            <span class="amount positive">+ $1,341.34</span>
+          </div>
+          <div class="settlement-row">
+            <span class="label">Detention pay · 2 hrs</span>
+            <span class="amount positive">+ $95.18</span>
+          </div>
+          <div class="settlement-row">
+            <span class="label">Fuel advance</span>
+            <span class="amount negative">- $168.00</span>
+          </div>
+          <div class="settlement-row">
+            <span class="label">IFTA reserve</span>
+            <span class="amount negative">- $64.28</span>
+          </div>
+          <div class="settlement-row">
+            <span class="label">Escrow reserve</span>
+            <span class="amount negative">- $40.00</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 20px;background:rgba(56,211,159,0.05);border-top:1px solid rgba(56,211,159,0.15);">
+            <span style="font-size:14px;font-weight:600;color:#FFF;">Net pay</span>
+            <span style="font-size:24px;font-weight:800;color:#FFF;font-family:'JetBrains Mono',monospace;">$1,159.24</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================
+     HOW IT WORKS
+     ====================================================== -->
+<section class="section">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:56px;">
+      <div class="eyebrow" style="margin:0 auto 20px;">How it works</div>
+      <h2 class="heading-2">Up and running in minutes.</h2>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:32px;position:relative;">
+      <!-- Connecting line -->
+      <div style="position:absolute;top:20px;left:calc(16.67% + 20px);right:calc(16.67% + 20px);height:1px;background:linear-gradient(90deg,var(--border),rgba(56,211,159,0.4),var(--border));display:none;" class="hide-mobile"></div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="step-num">1</div>
+        <h3 class="heading-4">Create contractor records</h3>
+        <p class="body-sm">Add drivers, set pay structure (per-mile, percentage, flat rate), and configure deductions. API-first or via dashboard.</p>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="step-num">2</div>
+        <h3 class="heading-4">Record payments &amp; bookkeeping</h3>
+        <p class="body-sm">Post settlement runs. Every payment auto-posts double-entry ledger entries. Deductions reconcile in real-time.</p>
+      </div>
+
+      <div style="display:flex;flex-direction:column;gap:16px;">
+        <div class="step-num">3</div>
+        <h3 class="heading-4">Review reports &amp; export</h3>
+        <p class="body-sm">Pull cost-per-mile reports, revenue summaries, 1099-NEC exports, and QuickBooks-compatible CSV with one API call.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================
+     PRICING PREVIEW
+     ====================================================== -->
+<section class="section section-alt" id="pricing">
+  <div class="container">
+    <div style="text-align:center;margin-bottom:56px;">
+      <div class="eyebrow" style="margin:0 auto 20px;">Pricing</div>
+      <h2 class="heading-2">Predictable pricing.<br>No surprise fees.</h2>
+      <p class="body-lg" style="max-width:480px;margin:16px auto 0;">Stripe-managed subscriptions with transparent per-worker billing. Cancel or scale at any time.</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:900px;margin:0 auto;">
+
+      <!-- Bookkeeping Only -->
+      <div class="pricing-card">
+        <div style="margin-bottom:24px;">
+          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">Bookkeeping Only</div>
+          <div style="font-size:12px;color:var(--text-subtle);">For small teams running their own payroll and just needing books.</div>
+        </div>
+        <div style="margin-bottom:24px;">
+          <span style="font-size:40px;font-weight:800;color:#FFF;letter-spacing:-0.03em;">$149</span>
+          <span style="font-size:14px;color:var(--text-subtle);">/mo</span>
+        </div>
+        <a href="app/signup.html" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:20px;">Start bookkeeping</a>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:10px;">
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Unlimited transactions</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Auto-categorisation</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">P&amp;L, balance sheet, trial</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">1099 + W-2 export</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">API + dashboard access</span></li>
+        </ul>
+      </div>
+
+      <!-- Combo — Featured -->
+      <div class="pricing-card featured" style="position:relative;">
+        <div style="position:absolute;top:-12px;left:50%;transform:translateX(-50%);background:var(--green);color:#08140F;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:4px 12px;border-radius:999px;white-space:nowrap;">Best Popular</div>
+        <div style="margin-bottom:24px;">
+          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">Combo</div>
+          <div style="font-size:12px;color:var(--text-subtle);">Everything in one package. The full stack for growing carriers.</div>
+        </div>
+        <div style="margin-bottom:24px;">
+          <span style="font-size:40px;font-weight:800;color:#FFF;letter-spacing:-0.03em;">$249</span>
+          <span style="font-size:14px;color:var(--text-subtle);">/mo · per worker</span>
+        </div>
+        <a href="app/signup.html" class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:20px;">Start free trial</a>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:10px;">
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Everything in Payroll &amp; Bookkeeping</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Unified general ledger</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Settlement + ledger automation</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Priority support · 8hr SLA</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Dedicated success engineer</span></li>
+        </ul>
+      </div>
+
+      <!-- Payroll Only -->
+      <div class="pricing-card">
+        <div style="margin-bottom:24px;">
+          <div style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:6px;">Payroll Only</div>
+          <div style="font-size:12px;color:var(--text-subtle);">Driver + contractor settlements and tax forms — without the bookkeeping module.</div>
+        </div>
+        <div style="margin-bottom:24px;">
+          <span style="font-size:40px;font-weight:800;color:#FFF;letter-spacing:-0.03em;">$189</span>
+          <span style="font-size:14px;color:var(--text-subtle);">/mo · per worker</span>
+        </div>
+        <a href="app/signup.html" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:20px;">Start payroll</a>
+        <ul style="list-style:none;display:flex;flex-direction:column;gap:10px;">
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Driver + contractor settlements</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Stripe payout integration</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">1099 + W-2 generation</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Webhook event stream</span></li>
+          <li class="trust-item"><svg width="14" height="14" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg><span style="font-size:13px;color:var(--text-muted);">Email + chat support</span></li>
+        </ul>
+      </div>
+
+    </div>
+
+    <div style="text-align:center;margin-top:28px;">
+      <p style="font-size:13px;color:var(--text-subtle);">All plans · no trial limit · no credit card required · cancel anytime</p>
+      <a href="pricing.html" style="font-size:14px;color:var(--green);font-weight:600;margin-top:8px;display:inline-block;">See full pricing →</a>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================
+     TRUST / SECURITY
+     ====================================================== -->
+<section class="section">
+  <div class="container" style="max-width:800px;">
+    <div style="text-align:center;margin-bottom:48px;">
+      <h2 class="heading-2" style="margin-bottom:16px;">Built for production from day one.</h2>
+      <p class="body" style="max-width:520px;margin:0 auto;">Security, compliance, and reliability aren't features — they're requirements. LedgerHaul ships with all of it baked in.</p>
+    </div>
+
+    <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:20px;">
+      <div class="card trust-item" style="gap:14px;padding:22px;">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#FFF;margin-bottom:4px;">JWT authentication</div>
+          <div style="font-size:13px;color:var(--text-subtle);">Secure token-based auth with configurable expiry and refresh.</div>
+        </div>
+      </div>
+      <div class="card trust-item" style="gap:14px;padding:22px;">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#FFF;margin-bottom:4px;">Immutable audit log</div>
+          <div style="font-size:13px;color:var(--text-subtle);">Every financial event is recorded with timestamps and actor IDs.</div>
+        </div>
+      </div>
+      <div class="card trust-item" style="gap:14px;padding:22px;">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 14v3m4-3v3m4-3v3M3 21h18M3 10h18M3 7l9-4 9 4M4 10h16v11H4V10z"/></svg>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#FFF;margin-bottom:4px;">Legal acceptance tracking</div>
+          <div style="font-size:13px;color:var(--text-subtle);">Terms-of-service enforcement with timestamped user acceptance records.</div>
+        </div>
+      </div>
+      <div class="card trust-item" style="gap:14px;padding:22px;">
+        <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        <div>
+          <div style="font-size:14px;font-weight:600;color:#FFF;margin-bottom:4px;">Idempotent operations</div>
+          <div style="font-size:13px;color:var(--text-subtle);">Duplicate webhook protection. No double-charges, no double-pays, ever.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================
+     CTA BANNER
+     ====================================================== -->
+<section style="padding:80px 0;background:radial-gradient(ellipse 60% 80% at 50% 50%, rgba(56,211,159,0.1) 0%, transparent 70%), var(--bg-panel);border-top:1px solid var(--border);border-bottom:1px solid var(--border);">
+  <div class="container" style="text-align:center;">
+    <h2 class="heading-2" style="margin-bottom:16px;">Ship the backend. Run the freight.</h2>
+    <p class="body-lg" style="max-width:480px;margin:0 auto 36px;">Deploy LedgerHaul in an afternoon. Calculate your first settlement before your next dispatch window closes.</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+      <a href="app/signup.html" class="btn btn-primary btn-lg">
+        Start free trial
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg>
+      </a>
+      <a href="mailto:engineering@ledgerhaul.com" class="btn btn-secondary btn-lg">Talk to engineering</a>
+    </div>
+  </div>
+</section>
+
+<!-- ======================================================
+     FOOTER
+     ====================================================== -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="/"><img src="assets/images/logo.png" alt="LedgerHaul"></a>
+        <p>Financial infrastructure for payroll, settlements, and compliance — purpose-built for trucking carriers.</p>
+      </div>
+
+      <div class="footer-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="product.html">Platform</a></li>
+          <li><a href="product.html#payroll">Payroll</a></li>
+          <li><a href="product.html#settlements">Settlements</a></li>
+          <li><a href="product.html#bookkeeping">Bookkeeping</a></li>
+          <li><a href="product.html#subscriptions">Subscriptions</a></li>
+          <li><a href="product.html#integrations">Integrations</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h5>Developers</h5>
+        <ul>
+          <li><a href="#">API Reference</a></li>
+          <li><a href="#">Webhooks</a></li>
+          <li><a href="#">SDKs</a></li>
+          <li><a href="#">Changelog</a></li>
+          <li><a href="#">Status</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <ul>
+          <li><a href="legal/terms.html">Terms</a></li>
+          <li><a href="legal/privacy.html">Privacy</a></li>
+          <li><a href="legal/refund.html">Refunds</a></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>© 2026 LedgerHaul, Inc. All rights reserved.</p>
+      <div style="display:flex;gap:16px;align-items:center;">
+        <span class="pill pill-ok" style="font-size:11px;"><span class="dot animate-pulse-dot"></span>All systems operational</span>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<script>
+  function toggleMenu() {
+    const menu = document.getElementById('mobileMenu');
+    menu.classList.toggle('open');
+  }
+
+  // Close mobile menu on resize
+  window.addEventListener('resize', () => {
+    if (window.innerWidth > 860) {
+      document.getElementById('mobileMenu').classList.remove('open');
+    }
+  });
+</script>
+
+<style>
+  @media (max-width: 900px) {
+    .hero-bg > .container > div { grid-template-columns: 1fr !important; gap: 48px !important; }
+    .hero-bg > .container > div > div:last-child { display: none; }
+    #capabilities .container > div { grid-template-columns: 1fr !important; gap: 40px !important; }
+    .features-grid { grid-template-columns: repeat(2,1fr) !important; }
+  }
+  @media (max-width: 680px) {
+    .heading-1 { font-size: 32px; }
+    section > .container > div[style*="grid-template-columns:repeat(3"] { grid-template-columns: 1fr !important; }
+    section > .container > div[style*="grid-template-columns:repeat(2"] { grid-template-columns: 1fr !important; }
+  }
+</style>
+</body>
+</html>

@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign in — LedgerHaul</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <style>
+    body { min-height: 100vh; display: flex; }
+    .auth-layout { display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; width: 100%; }
+    .auth-hero { background: radial-gradient(ellipse 80% 60% at 20% 50%, rgba(56,211,159,0.15) 0%, transparent 60%), #0D1521; display: flex; flex-direction: column; justify-content: center; padding: 60px; border-right: 1px solid var(--border); }
+    .auth-form-side { display: flex; align-items: center; justify-content: center; padding: 40px 24px; background: var(--bg); }
+    .auth-form-wrap { width: 100%; max-width: 400px; }
+    .api-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid; margin-bottom: 20px; }
+    @media (max-width: 800px) {
+      .auth-layout { grid-template-columns: 1fr; }
+      .auth-hero { display: none; }
+      .auth-form-side { padding: 32px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="auth-layout">
+
+  <!-- Hero side -->
+  <div class="auth-hero">
+    <a href="/" style="display:inline-block;margin-bottom:48px;"><img src="../assets/images/logo.png" alt="LedgerHaul" style="height:40px;width:auto;"></a>
+
+    <div style="margin-bottom:40px;">
+      <h1 style="font-size:36px;font-weight:800;color:#FFF;letter-spacing:-0.03em;line-height:1.15;margin-bottom:16px;">Financial Clarity<br><span style="background:linear-gradient(135deg,#38D39F,#2FC48E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;">for Every Mile</span></h1>
+      <p style="font-size:15px;color:var(--text-muted);line-height:1.7;max-width:400px;">Your complete trucking finance backend. Payroll, settlements, bookkeeping — all in one API.</p>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:14px;">
+      <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-muted);">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green);flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        Contractor settlements calculated correctly
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-muted);">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green);flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        GAAP-compliant double-entry bookkeeping
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-muted);">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green);flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        1099-NEC and W-2 export year-round
+      </div>
+    </div>
+
+    <div style="margin-top:48px;padding:20px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:16px;">
+      <div style="display:flex;justify-content:space-between;margin-bottom:8px;font-size:13px;">
+        <span style="color:var(--text-subtle);">Net settlements this week</span>
+        <span style="color:#FFF;font-weight:700;font-family:monospace;">$84,320</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;font-size:13px;">
+        <span style="color:var(--text-subtle);">Active drivers</span>
+        <span style="color:var(--ok-fg);font-weight:700;">18 online</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form side -->
+  <div class="auth-form-side">
+    <div class="auth-form-wrap">
+      <!-- Mobile logo -->
+      <a href="/" style="display:none;margin-bottom:32px;" class="mobile-logo"><img src="../assets/images/logo.png" alt="LedgerHaul" style="height:36px;width:auto;"></a>
+
+      <!-- API status pill -->
+      <div id="apiPill" class="api-pill pill-neutral" style="border-color:var(--border);color:var(--text-subtle);background:rgba(255,255,255,0.04);">
+        <span class="dot" style="background:var(--text-subtle);"></span>
+        <span id="apiPillText">Connecting…</span>
+      </div>
+
+      <h2 style="font-size:28px;font-weight:800;color:#FFF;letter-spacing:-0.02em;margin-bottom:6px;">Welcome back</h2>
+      <p style="font-size:14px;color:var(--text-muted);margin-bottom:28px;">Sign in to your LedgerHaul account.</p>
+
+      <!-- Error message -->
+      <div id="errorMsg" style="display:none;" class="alert alert-error" style="margin-bottom:16px;"></div>
+
+      <form id="loginForm" style="display:flex;flex-direction:column;gap:18px;">
+        <div class="field">
+          <label for="email">Email address</label>
+          <input type="email" id="email" name="email" placeholder="you@company.com" autocomplete="email" required>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="Your password" autocomplete="current-password" required>
+        </div>
+
+        <div style="display:flex;justify-content:space-between;align-items:center;">
+          <label class="checkbox-field">
+            <input type="checkbox" id="rememberMe">
+            <span>Remember me</span>
+          </label>
+          <a href="forgot-password.html" style="font-size:13px;color:var(--green);font-weight:500;">Forgot password?</a>
+        </div>
+
+        <button type="submit" id="submitBtn" class="btn btn-primary" style="width:100%;justify-content:center;min-height:48px;font-size:15px;">
+          Sign in
+        </button>
+      </form>
+
+      <div class="form-divider" style="margin:20px 0;">or</div>
+
+      <p style="text-align:center;font-size:14px;color:var(--text-muted);">
+        Don't have an account? <a href="signup.html" style="color:var(--green);font-weight:600;">Create account</a>
+      </p>
+
+      <p style="text-align:center;font-size:12px;color:var(--text-subtle);margin-top:32px;">
+        By signing in, you agree to our <a href="../legal/terms.html" style="color:var(--text-muted);">Terms of Service</a> and <a href="../legal/privacy.html" style="color:var(--text-muted);">Privacy Policy</a>.
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  // Preserve existing JS logic — only HTML/CSS was changed
+  const API_BASE = (window.LH_CONFIG && window.LH_CONFIG.apiBase) ? window.LH_CONFIG.apiBase : '';
+
+  const pill = document.getElementById('apiPill');
+  const pillText = document.getElementById('apiPillText');
+  const errorMsg = document.getElementById('errorMsg');
+
+  function setPill(status, text) {
+    pill.className = 'api-pill';
+    if (status === 'ok') { pill.classList.add('pill-ok'); }
+    else if (status === 'error') { pill.classList.add('pill-error'); }
+    else { pill.classList.add('pill-neutral'); }
+    pillText.textContent = text;
+  }
+
+  // Health check
+  fetch(API_BASE + '/health').then(r => {
+    setPill(r.ok ? 'ok' : 'error', r.ok ? 'API online' : 'API unreachable');
+  }).catch(() => setPill('error', 'API unreachable'));
+
+  document.getElementById('loginForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Signing in…';
+    errorMsg.style.display = 'none';
+
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    try {
+      const res = await fetch(API_BASE + '/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        if (data.access_token) {
+          // Store in sessionStorage only (not localStorage) — clears on tab/browser close
+          // localStorage persists across sessions and is an XSS exfiltration target
+          sessionStorage.setItem('lh_token', data.access_token);
+          // Keep localStorage key cleared to prevent stale token reads
+          sessionStorage.removeItem('lh_token'); sessionStorage.removeItem('lh_refresh_token');
+        }
+        if (data.refresh_token) {
+          sessionStorage.setItem('lh_refresh_token', data.refresh_token);
+        }
+        window.location.href = 'index.html';
+      } else {
+        errorMsg.style.display = 'flex';
+        errorMsg.textContent = data.message || data.error || 'Invalid email or password.';
+        btn.disabled = false;
+        btn.textContent = 'Sign in';
+      }
+    } catch (err) {
+      errorMsg.style.display = 'flex';
+      errorMsg.textContent = 'Unable to connect to the server. Please try again.';
+      btn.disabled = false;
+      btn.textContent = 'Sign in';
+    }
+  });
+</script>
+
+<style>
+  @media (max-width: 800px) {
+    .mobile-logo { display: block !important; }
+  }
+</style>
+</body>
+</html>

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms Acceptance — LedgerHaul</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <style>
+    body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(56,211,159,0.1) 0%, transparent 60%), var(--bg); }
+  </style>
+</head>
+<body>
+  <div style="width:100%;max-width:520px;">
+    <div style="text-align:center;margin-bottom:28px;">
+      <a href="/"><img src="../assets/images/logo.png" alt="LedgerHaul" style="height:36px;width:auto;margin:0 auto;"></a>
+    </div>
+
+    <div class="panel">
+      <div style="text-align:center;margin-bottom:28px;">
+        <div style="width:52px;height:52px;background:rgba(56,211,159,0.1);border:1px solid rgba(56,211,159,0.25);border-radius:14px;display:flex;align-items:center;justify-content:center;margin:0 auto 16px;color:var(--green);">
+          <svg width="24" height="24" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </div>
+        <h2 style="font-size:22px;font-weight:700;color:#FFF;margin-bottom:8px;">Review &amp; Accept Terms</h2>
+        <p style="font-size:14px;color:var(--text-muted);">Before continuing, please review and accept our Terms of Service and Privacy Policy.</p>
+      </div>
+
+      <div style="max-height:200px;overflow-y:auto;background:var(--bg-input);border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:20px;" class="scroll-area">
+        <p style="font-size:13px;color:var(--text-muted);line-height:1.7;">By accepting, you agree that you have read and understood our <a href="terms.html" style="color:var(--green);">Terms of Service</a> and <a href="privacy.html" style="color:var(--green);">Privacy Policy</a>. You acknowledge that LedgerHaul provides financial tools for trucking operations and that you are responsible for verifying all financial data produced by the Service before use in payroll, tax filings, or other regulated activities.</p>
+      </div>
+
+      <div id="errorMsg" style="display:none;" class="alert alert-error" style="margin-bottom:16px;"></div>
+
+      <form id="acceptForm" style="display:flex;flex-direction:column;gap:14px;">
+        <label class="checkbox-field">
+          <input type="checkbox" id="acceptTerms" required>
+          <span>I have read and agree to the <a href="terms.html" style="color:var(--green);">Terms of Service</a></span>
+        </label>
+        <label class="checkbox-field">
+          <input type="checkbox" id="acceptPrivacy" required>
+          <span>I have read and agree to the <a href="privacy.html" style="color:var(--green);">Privacy Policy</a></span>
+        </label>
+        <button type="submit" id="acceptBtn" class="btn btn-primary" style="width:100%;justify-content:center;min-height:48px;margin-top:4px;">Accept &amp; Continue</button>
+      </form>
+    </div>
+
+    <p style="text-align:center;font-size:13px;color:var(--text-subtle);margin-top:16px;">
+      <a href="../app/login.html" style="color:var(--text-muted);">← Back to sign in</a>
+    </p>
+  </div>
+
+<script>
+  const API_BASE = (window.LH_CONFIG && window.LH_CONFIG.apiBase) ? window.LH_CONFIG.apiBase : '';
+
+  document.getElementById('acceptForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('acceptBtn');
+    const errEl = document.getElementById('errorMsg');
+    errEl.style.display = 'none';
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Accepting…';
+
+    try {
+      const res = await fetch(API_BASE + '/compliance/legal/accept', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (localStorage.getItem('lh_token') || '') },
+        body: JSON.stringify({ accepted: true, accepted_at: new Date().toISOString() })
+      });
+
+      if (res.ok) {
+        const redirect = new URLSearchParams(window.location.search).get('next') || '../app/index.html';
+        window.location.href = redirect;
+      } else {
+        const data = await res.json();
+        errEl.style.display = 'flex';
+        errEl.textContent = data.message || 'Failed to record acceptance.';
+        btn.disabled = false;
+        btn.textContent = 'Accept & Continue';
+      }
+    } catch {
+      errEl.style.display = 'flex';
+      errEl.textContent = 'Unable to connect.';
+      btn.disabled = false;
+      btn.textContent = 'Accept & Continue';
+    }
+  });
+</script>
+</body>
+</html>

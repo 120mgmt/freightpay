@@ -1,0 +1,24 @@
+# LedgerHaul robots.txt
+# App routes are protected — disallow crawling
+
+User-agent: Googlebot
+Allow: /
+Disallow: /app/
+
+User-agent: Bingbot
+Allow: /
+Disallow: /app/
+
+User-agent: Twitterbot
+Allow: /
+Disallow: /app/
+
+User-agent: facebookexternalhit
+Allow: /
+Disallow: /app/
+
+User-agent: *
+Allow: /
+Disallow: /app/
+
+Sitemap: https://ledgerhaul.com/sitemap.xml

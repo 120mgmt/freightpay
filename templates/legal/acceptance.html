@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <title>Legal Acceptance</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+        body {
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f7f7f7;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            max-width: 720px;
+            margin: 40px auto;
+            background: #ffffff;
+            padding: 32px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        h1 {
+            margin-top: 0;
+        }
+        .legal-box {
+            height: 260px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            padding: 16px;
+            margin-bottom: 20px;
+            background: #fafafa;
+            font-size: 0.9rem;
+        }
+        .checkbox {
+            margin-bottom: 20px;
+        }
+        .checkbox label {
+            font-size: 0.95rem;
+        }
+        .actions {
+            text-align: right;
+        }
+        button {
+            padding: 10px 18px;
+            border-radius: 6px;
+            border: none;
+            background: #2563eb;
+            color: white;
+            font-size: 15px;
+            cursor: pointer;
+        }
+        button:disabled {
+            background: #9ca3af;
+            cursor: not-allowed;
+        }
+        a {
+            color: #2563eb;
+            text-decoration: none;
+        }
+        .muted {
+            color: #666;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>Terms Acceptance Required</h1>
+
+    <p>
+        Before continuing, you must review and accept our
+        <a href="/legal/terms" target="_blank" rel="noopener noreferrer">Terms of Service</a> and
+        <a href="/legal/privacy" target="_blank" rel="noopener noreferrer">Privacy Policy</a>.
+    </p>
+
+    <div class="legal-box">
+        <p>
+            By using this platform, you agree to be legally bound by the Terms of Service,
+            Privacy Policy, Refund & Billing Policy, and all referenced policies and disclosures,
+            including those governing payroll facilitation, payments, third-party integrations,
+            data processing, and compliance obligations.
+        </p>
+        <p>
+            You acknowledge that the platform is a software service only and does not provide
+            legal, tax, accounting, or payroll advice, and that you remain solely responsible
+            for the accuracy of all data and compliance with applicable laws.
+        </p>
+        <p>
+            Acceptance is required to activate your account, initiate billing, and enable
+            access to paid or regulated features.
+        </p>
+        <p class="muted">
+            Your acceptance is recorded with a timestamp, IP address, user identifier,
+            and applicable policy versions for audit, compliance, and dispute-resolution purposes.
+        </p>
+    </div>
+
+    <form method="POST" action="/legal/accept">
+        <div class="checkbox">
+            <label>
+                <input type="checkbox" name="accepted" required />
+                I confirm that I have read, understand, and agree to the Terms of Service,
+                Privacy Policy, and all incorporated policies.
+            </label>
+        </div>
+
+        <div class="actions">
+            <button type="submit">Accept and Continue</button>
+        </div>
+    </form>
+</div>
+</body>
+</html>

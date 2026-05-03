@@ -1,0 +1,3 @@
+[bandit]
+exclude_dirs = tests,migrations/versions
+skips = B101,B104,B105,B108,B110,B112,B311,B608

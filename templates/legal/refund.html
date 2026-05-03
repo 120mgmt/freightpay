@@ -1,0 +1,108 @@
+<!-- File: templates/legal/refund.html -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex,nofollow" />
+    <title>Refund Policy | LedgerHaul</title>
+    <style>
+      :root { color-scheme: light; }
+      body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.55; color: #111827; background: #ffffff; }
+      .wrap { max-width: 860px; margin: 0 auto; padding: 32px 18px; }
+      h1 { font-size: 28px; margin: 0 0 6px; }
+      .meta { color: #6b7280; font-size: 14px; margin: 0 0 22px; }
+      h2 { font-size: 18px; margin: 26px 0 8px; }
+      p { margin: 10px 0; }
+      ul { margin: 10px 0 10px 18px; }
+      li { margin: 6px 0; }
+      .callout { border: 1px solid #e5e7eb; background: #f9fafb; padding: 12px 14px; border-radius: 10px; margin: 14px 0; }
+      a { color: #111827; }
+      hr { border: 0; border-top: 1px solid #e5e7eb; margin: 22px 0; }
+      footer { color: #6b7280; font-size: 13px; margin-top: 26px; }
+      code { background: #f3f4f6; padding: 1px 6px; border-radius: 6px; }
+    </style>
+  </head>
+
+  <body>
+    <main class="wrap">
+      <h1>Refund Policy</h1>
+      <p class="meta">
+        Effective Date: <strong>{{ effective_date or "2026-01-26" }}</strong><br />
+        Company: <strong>{{ company_name or "LedgerHaul" }}</strong>
+      </p>
+
+      <div class="callout">
+        <strong>Summary:</strong> LedgerHaul is a subscription software service. Refund eligibility depends on billing type,
+        timing, and account status as described below.
+      </div>
+
+      <h2>1) Subscription Fees</h2>
+      <p>
+        Subscription fees are charged in advance for the billing period shown at checkout (monthly or annual, if offered).
+        Unless required by law, subscription fees are generally <strong>non-refundable</strong> once a billing period begins.
+      </p>
+
+      <h2>2) Trials and First-Time Subscriptions</h2>
+      <ul>
+        <li>If a free trial is offered, you may cancel before the trial ends to avoid charges.</li>
+        <li>If you are charged due to forgetting to cancel before trial end, refunds are not guaranteed.</li>
+      </ul>
+
+      <h2>3) Upgrade / Downgrade</h2>
+      <ul>
+        <li>Upgrades may take effect immediately. Any proration is handled by the payment processor (Stripe) based on your plan configuration.</li>
+        <li>Downgrades generally take effect at the next renewal unless stated otherwise during plan change.</li>
+      </ul>
+
+      <h2>4) Cancellation</h2>
+      <p>
+        You may cancel at any time. Cancellation stops future renewals, but does not automatically refund fees already paid.
+        Your access remains active through the end of the current paid period unless your account is suspended for policy violations.
+      </p>
+
+      <h2>5) Payment Disputes and Chargebacks</h2>
+      <p>
+        If you initiate a chargeback or payment dispute, we may suspend service access while the dispute is investigated.
+        Repeated disputes or fraud indicators may result in account termination.
+      </p>
+
+      <h2>6) Exceptional Refunds (Case-by-Case)</h2>
+      <p>
+        We may consider a refund in limited cases, for example:
+      </p>
+      <ul>
+        <li>Duplicate charges confirmed on the same billing period.</li>
+        <li>Billing errors caused by a system malfunction verified by our logs.</li>
+        <li>Other scenarios required by applicable law.</li>
+      </ul>
+      <p>
+        Any approved refund is issued to the original payment method and may take several business days to post depending on your bank.
+      </p>
+
+      <h2>7) Taxes and Third-Party Fees</h2>
+      <p>
+        Taxes, governmental fees, and third-party processing fees are generally non-refundable unless required by law.
+      </p>
+
+      <h2>8) How to Request a Refund Review</h2>
+      <p>
+        To request a refund review, contact support and include:
+      </p>
+      <ul>
+        <li>Account email</li>
+        <li>Company name (if applicable)</li>
+        <li>Invoice ID or Stripe receipt reference</li>
+        <li>Reason for request</li>
+      </ul>
+
+      <hr />
+
+      <footer>
+        <p>
+          This Refund Policy is provided for transparency and operational clarity. It does not limit any rights you may have under applicable law.
+        </p>
+      </footer>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,60 @@
+<!-- templates/login.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FreightPay - Login</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f7f9fc; margin:0; padding:24px; }
+    .wrap { max-width: 420px; margin: 48px auto; }
+    .card { background:#fff; border-radius:10px; padding:20px; box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+    h1 { margin: 0 0 14px; font-size: 22px; }
+    label { display:block; margin-top: 12px; font-weight: 700; }
+    input { width:100%; padding:10px; margin-top:6px; border:1px solid #d5dbe3; border-radius:8px; box-sizing:border-box; }
+    .row { display:flex; justify-content: space-between; align-items:center; margin-top: 12px; }
+    .row small a { text-decoration:none; }
+    button { width:100%; margin-top:14px; padding:10px 14px; border:0; border-radius:8px; background:#0b5ed7; color:#fff; font-weight:700; cursor:pointer; }
+    button:hover { background:#094db3; }
+    .msg { margin-top: 12px; padding:10px; border-radius:8px; background:#fff3cd; border:1px solid #ffeeba; color:#856404; }
+    .muted { margin-top: 14px; color:#667085; font-size: 12px; text-align:center; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <h1>Login</h1>
+
+      {% if message %}
+        <div class="msg">{{ message }}</div>
+      {% endif %}
+
+      <form method="POST" action="/login" autocomplete="on">
+        {% if csrf_token is defined %}
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        {% endif %}
+
+        <label for="email">Email</label>
+        <input id="email" name="email" type="email" required autocomplete="email" />
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" required autocomplete="current-password" />
+
+        <div class="row">
+          <label style="margin:0; font-weight:600;">
+            <input type="checkbox" name="remember" value="true" style="width:auto; margin-right:8px;" />
+            Remember me
+          </label>
+          <small><a href="/forgot-password">Forgot password?</a></small>
+        </div>
+
+        <button type="submit">Sign in</button>
+      </form>
+
+      <div class="muted">
+        Don’t have an account? <a href="/register">Create one</a>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

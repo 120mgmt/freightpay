@@ -1,0 +1,29 @@
+# File: pyproject.toml
+# Purpose: Enterprise lint policy baseline (prevents CI fail noise while enforcing real standards)
+# Date: 2026-02-26
+# Status: Enterprise-hardened (scoped exclusions + explicit per-file exceptions only)
+
+[tool.ruff]
+target-version = "py312"
+line-length = 110
+
+# Start strict but realistic; expand later as debt is burned down
+select = ["E", "F", "W"]
+ignore = []
+
+exclude = [
+  ".git",
+  ".venv",
+  "venv",
+  "env",
+  "node_modules",
+  "migrations",
+  "alembic",
+  "static",
+  "templates",
+  # "legal",  # Removed: legal/ Python files now included in linting
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Gunicorn imports `app` from this module; keep import even if "unused"
+"wsgi.py" = ["F401"]

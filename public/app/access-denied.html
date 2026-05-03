@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Access Denied — LedgerHaul</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <style>
+    body { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 20px; background: radial-gradient(ellipse 60% 40% at 50% 0%, rgba(255,80,80,0.06) 0%, transparent 60%), var(--bg); }
+  </style>
+</head>
+<body>
+  <div style="width:100%;max-width:440px;text-align:center;">
+    <a href="/"><img src="../assets/images/logo.png" alt="LedgerHaul" style="height:36px;width:auto;margin:0 auto 32px;"></a>
+
+    <div class="panel" style="text-align:center;">
+      <div style="width:72px;height:72px;background:var(--err-bg);border:1px solid var(--err-border);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px;color:var(--err-fg);">
+        <svg width="32" height="32" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+      </div>
+
+      <h2 style="font-size:24px;font-weight:700;color:#FFF;margin-bottom:10px;">Access denied</h2>
+      <p id="accessMsg" style="font-size:15px;color:var(--text-muted);line-height:1.7;margin-bottom:28px;">You don't have permission to access this page. This might be because your subscription is inactive or your account needs verification.</p>
+
+      <div style="display:flex;flex-direction:column;gap:10px;">
+        <a href="index.html" class="btn btn-secondary" style="width:100%;justify-content:center;">Go to dashboard</a>
+        <a href="login.html" class="btn btn-ghost" style="width:100%;justify-content:center;">Sign in with different account</a>
+      </div>
+    </div>
+
+    <p style="font-size:13px;color:var(--text-subtle);margin-top:20px;">
+      Need help? <a href="mailto:support@ledgerhaul.com" style="color:var(--green);">Contact support</a>
+    </p>
+  </div>
+
+<script>
+  const params = new URLSearchParams(window.location.search);
+  const reason = params.get('reason');
+  if (reason === 'subscription') {
+    document.getElementById('accessMsg').textContent = 'Your subscription is inactive. Please update your billing to continue.';
+  } else if (reason === 'verification') {
+    document.getElementById('accessMsg').textContent = 'Please verify your email address to access this page.';
+  } else if (reason === 'role') {
+    document.getElementById('accessMsg').textContent = 'You don\'t have the required role to access this resource.';
+  }
+</script>
+</body>
+</html>

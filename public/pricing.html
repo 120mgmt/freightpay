@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pricing — LedgerHaul</title>
+  <meta name="description" content="Predictable, transparent pricing for trucking financial operations. No surprise fees.">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="assets/css/theme.css">
+  <link rel="stylesheet" href="assets/css/components.css">
+  <style>
+    .nav-mobile.open { display: flex; }
+    .plan-check { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-muted); }
+    .plan-check svg { color: var(--green); flex-shrink: 0; }
+    .faq-item { border-bottom: 1px solid var(--border); }
+    .faq-question { display: flex; justify-content: space-between; align-items: center; padding: 20px 0; cursor: pointer; font-size: 16px; font-weight: 600; color: var(--text); gap: 16px; }
+    .faq-answer { font-size: 15px; color: var(--text-muted); line-height: 1.7; padding-bottom: 20px; display: none; }
+    .faq-item.open .faq-answer { display: block; }
+    .faq-item.open .faq-icon { transform: rotate(45deg); }
+    .faq-icon { transition: transform 0.2s ease; color: var(--text-subtle); flex-shrink: 0; }
+    .compare-row { display: grid; grid-template-columns: 220px repeat(3,1fr); gap: 0; border-bottom: 1px solid var(--border-muted); }
+    .compare-row:last-child { border-bottom: none; }
+    .compare-row > div { padding: 14px 16px; font-size: 14px; display: flex; align-items: center; }
+    .compare-row > div:first-child { color: var(--text-muted); border-right: 1px solid var(--border-muted); }
+    .compare-row > div:not(:first-child) { justify-content: center; }
+    .compare-header { background: rgba(18,26,36,0.8); font-weight: 700; }
+    .compare-header > div:first-child { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-subtle); }
+    .compare-header > div:not(:first-child) { font-size: 15px; color: var(--text); }
+    .compare-featured { background: rgba(56,211,159,0.05); }
+  </style>
+</head>
+<body>
+
+<!-- NAV -->
+<header>
+  <nav class="nav">
+    <div class="container nav-inner">
+      <a href="/" class="nav-logo"><img src="assets/images/logo.png" alt="LedgerHaul"></a>
+      <ul class="nav-links">
+        <li><a href="product.html">Platform</a></li>
+        <li><a href="product.html#capabilities">Capabilities</a></li>
+        <li><a href="pricing.html" class="active">Pricing</a></li>
+        <li><a href="legal/terms.html">Legal</a></li>
+      </ul>
+      <div class="nav-actions">
+        <a href="app/login.html" class="btn btn-secondary btn-sm">Log in</a>
+        <a href="app/signup.html" class="btn btn-primary btn-sm">Create Account</a>
+      </div>
+      <button class="nav-hamburger" onclick="toggleMenu()" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+    </div>
+    <div class="container">
+      <div class="nav-mobile" id="mobileMenu">
+        <a href="product.html">Platform</a>
+        <a href="product.html#capabilities">Capabilities</a>
+        <a href="pricing.html">Pricing</a>
+        <a href="legal/terms.html">Legal</a>
+        <div class="nav-mobile-actions">
+          <a href="app/login.html" class="btn btn-secondary" style="width:100%;justify-content:center;">Log in</a>
+          <a href="app/signup.html" class="btn btn-primary" style="width:100%;justify-content:center;">Create Account</a>
+        </div>
+      </div>
+    </div>
+  </nav>
+</header>
+
+<!-- HERO -->
+<section style="padding:80px 0 64px;background:radial-gradient(ellipse 70% 40% at 50% 0%, rgba(56,211,159,0.12) 0%, transparent 60%),var(--bg);">
+  <div class="container" style="text-align:center;">
+    <div class="eyebrow" style="margin:0 auto 20px;">Pricing</div>
+    <h1 class="heading-1" style="margin-bottom:16px;">Predictable pricing.<br><span class="text-green">No surprise fees.</span></h1>
+    <p class="body-lg" style="max-width:500px;margin:0 auto;">Stripe-managed subscriptions with transparent per-worker billing. Cancel or scale at any time.</p>
+  </div>
+</section>
+
+<!-- PRICING CARDS -->
+<section style="padding:0 0 80px;">
+  <div class="container">
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;max-width:960px;margin:0 auto;" id="plan-grid">
+
+      <!-- Bookkeeping Only -->
+      <div class="pricing-card">
+        <div style="margin-bottom:8px;">
+          <div style="font-size:18px;font-weight:700;color:#FFF;margin-bottom:8px;">Bookkeeping Only</div>
+          <div style="font-size:14px;color:var(--text-subtle);line-height:1.5;margin-bottom:24px;">For small teams running their own payroll and just needing books kept.</div>
+          <div style="margin-bottom:24px;">
+            <span style="font-size:48px;font-weight:800;color:#FFF;letter-spacing:-0.03em;">$149</span>
+            <span style="font-size:15px;color:var(--text-subtle);">/mo</span>
+          </div>
+        </div>
+        <a href="app/signup.html" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:28px;">Start bookkeeping</a>
+        <div style="border-top:1px solid var(--border-muted);padding-top:24px;display:flex;flex-direction:column;gap:12px;">
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Unlimited transactions</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Auto-categorisation</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>P&amp;L, balance sheet, trial</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>1099-NEC + W-2 export</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>API + dashboard access</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Email support</div>
+        </div>
+      </div>
+
+      <!-- Combo — Featured -->
+      <div class="pricing-card featured" style="position:relative;">
+        <div style="position:absolute;top:-14px;left:50%;transform:translateX(-50%);background:var(--green);color:#08140F;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;padding:5px 14px;border-radius:999px;white-space:nowrap;">Most Popular</div>
+        <div style="margin-bottom:8px;">
+          <div style="font-size:18px;font-weight:700;color:#FFF;margin-bottom:8px;">Combo</div>
+          <div style="font-size:14px;color:var(--text-subtle);line-height:1.5;margin-bottom:24px;">Everything in one package. The full stack for growing carriers.</div>
+          <div style="margin-bottom:24px;">
+            <span style="font-size:48px;font-weight:800;color:#FFF;letter-spacing:-0.03em;">$249</span>
+            <span style="font-size:15px;color:var(--text-subtle);">/mo · per worker</span>
+          </div>
+        </div>
+        <a href="app/signup.html" class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:28px;">Start free trial</a>
+        <div style="border-top:1px solid rgba(56,211,159,0.2);padding-top:24px;display:flex;flex-direction:column;gap:12px;">
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Everything in Payroll &amp; Bookkeeping</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Unified general ledger</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Settlement + ledger automation</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Priority support · 8hr SLA</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Dedicated success engineer</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Custom integrations available</div>
+        </div>
+      </div>
+
+      <!-- Payroll Only -->
+      <div class="pricing-card">
+        <div style="margin-bottom:8px;">
+          <div style="font-size:18px;font-weight:700;color:#FFF;margin-bottom:8px;">Payroll Only</div>
+          <div style="font-size:14px;color:var(--text-subtle);line-height:1.5;margin-bottom:24px;">Driver + contractor settlements and tax forms — without the bookkeeping module.</div>
+          <div style="margin-bottom:24px;">
+            <span style="font-size:48px;font-weight:800;color:#FFF;letter-spacing:-0.03em;">$189</span>
+            <span style="font-size:15px;color:var(--text-subtle);">/mo · per worker</span>
+          </div>
+        </div>
+        <a href="app/signup.html" class="btn btn-secondary" style="width:100%;justify-content:center;margin-bottom:28px;">Start payroll</a>
+        <div style="border-top:1px solid var(--border-muted);padding-top:24px;display:flex;flex-direction:column;gap:12px;">
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Driver + contractor settlements</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Stripe payout integration</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>1099-NEC + W-2 generation</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Webhook event stream</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Fuel advance tracking</div>
+          <div class="plan-check"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>Email + chat support</div>
+        </div>
+      </div>
+
+    </div>
+
+    <p style="text-align:center;font-size:13px;color:var(--text-subtle);margin-top:20px;">All plans · no trial limit · no credit card required · cancel anytime</p>
+  </div>
+</section>
+
+<!-- COMPARISON TABLE -->
+<section style="padding:0 0 80px;">
+  <div class="container" style="max-width:960px;">
+    <h2 class="heading-2" style="text-align:center;margin-bottom:40px;">Plan comparison</h2>
+
+    <div style="border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;">
+      <!-- Header -->
+      <div class="compare-row compare-header">
+        <div>Feature</div>
+        <div>Bookkeeping</div>
+        <div style="background:rgba(56,211,159,0.05);">Combo</div>
+        <div>Payroll</div>
+      </div>
+
+      <!-- Rows -->
+      <div class="compare-row">
+        <div>Contractor settlements</div>
+        <div>—</div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+      </div>
+      <div class="compare-row">
+        <div>Per-mile / per-load / % pay</div>
+        <div>—</div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+      </div>
+      <div class="compare-row">
+        <div>1099-NEC + W-2 export</div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+      </div>
+      <div class="compare-row">
+        <div>Double-entry bookkeeping</div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div>—</div>
+      </div>
+      <div class="compare-row">
+        <div>General ledger / P&amp;L</div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div>—</div>
+      </div>
+      <div class="compare-row">
+        <div>QuickBooks CSV export</div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div>—</div>
+      </div>
+      <div class="compare-row">
+        <div>Stripe payout integration</div>
+        <div>—</div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+      </div>
+      <div class="compare-row">
+        <div>Webhook events</div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+      </div>
+      <div class="compare-row">
+        <div>Support SLA</div>
+        <div style="font-size:13px;">48hr email</div>
+        <div class="compare-featured" style="font-size:13px;color:var(--ok-fg);">8hr priority</div>
+        <div style="font-size:13px;">24hr email + chat</div>
+      </div>
+      <div class="compare-row">
+        <div>Success engineer</div>
+        <div>—</div>
+        <div class="compare-featured"><svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green)"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg></div>
+        <div>—</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section style="padding:0 0 80px;border-top:1px solid var(--border);">
+  <div class="container" style="max-width:720px;padding-top:80px;">
+    <h2 class="heading-2" style="text-align:center;margin-bottom:48px;">Frequently asked</h2>
+
+    <div class="faq-item">
+      <div class="faq-question" onclick="toggleFaq(this)">
+        Is there a free trial?
+        <svg class="faq-icon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-answer">Yes — all plans include a free trial period with no credit card required. You can run real settlements and generate reports before committing.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" onclick="toggleFaq(this)">
+        How does per-worker billing work?
+        <svg class="faq-icon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-answer">The Combo and Payroll plans are priced per active worker per month. A worker is counted as active if they had at least one settlement run in the billing period. Bookkeeping-only plans are flat-rate with no per-worker charge.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" onclick="toggleFaq(this)">
+        Can I change plans later?
+        <svg class="faq-icon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-answer">Absolutely. You can upgrade, downgrade, or cancel at any time from your Stripe-powered billing portal. Upgrades take effect immediately; downgrades apply at the next billing cycle.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" onclick="toggleFaq(this)">
+        What payment methods do you accept?
+        <svg class="faq-icon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-answer">We accept all major credit and debit cards via Stripe. ACH bank transfers are available on annual plans. All payments are processed securely through Stripe — we never store your card details.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" onclick="toggleFaq(this)">
+        Is my financial data secure?
+        <svg class="faq-icon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-answer">Yes. All data is encrypted in transit (TLS 1.3) and at rest. Our database runs on managed PostgreSQL with automated backups. Access is scoped by role — drivers, clients, and admins each see only what they're authorized to see.</div>
+    </div>
+
+    <div class="faq-item">
+      <div class="faq-question" onclick="toggleFaq(this)">
+        Do you support owner-operators and fleets?
+        <svg class="faq-icon" width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+      </div>
+      <div class="faq-answer">Yes — LedgerHaul handles both single-driver owner-operators and multi-driver fleets. Pay structures can be configured per driver. There's no minimum fleet size.</div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section style="padding:80px 0;background:radial-gradient(ellipse 60% 80% at 50% 50%, rgba(56,211,159,0.1) 0%, transparent 70%), var(--bg-panel);border-top:1px solid var(--border);">
+  <div class="container" style="text-align:center;">
+    <h2 class="heading-2" style="margin-bottom:16px;">Start for free today.</h2>
+    <p class="body-lg" style="max-width:480px;margin:0 auto 36px;">No credit card required. Set up your first settlement run before your next dispatch window closes.</p>
+    <a href="app/signup.html" class="btn btn-primary btn-lg">Create free account <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M5 12h14M12 5l7 7-7 7"/></svg></a>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="footer">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <a href="/"><img src="assets/images/logo.png" alt="LedgerHaul"></a>
+        <p>Financial infrastructure purpose-built for trucking carriers.</p>
+      </div>
+      <div class="footer-col">
+        <h5>Product</h5>
+        <ul>
+          <li><a href="product.html">Platform</a></li>
+          <li><a href="product.html#payroll">Payroll</a></li>
+          <li><a href="product.html#settlements">Settlements</a></li>
+          <li><a href="product.html#bookkeeping">Bookkeeping</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Developers</h5>
+        <ul>
+          <li><a href="#">API Reference</a></li>
+          <li><a href="#">Webhooks</a></li>
+          <li><a href="#">Changelog</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <h5>Legal</h5>
+        <ul>
+          <li><a href="legal/terms.html">Terms</a></li>
+          <li><a href="legal/privacy.html">Privacy</a></li>
+          <li><a href="legal/refund.html">Refunds</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <p>© 2026 LedgerHaul, Inc. All rights reserved.</p>
+      <span class="pill pill-ok" style="font-size:11px;"><span class="dot animate-pulse-dot"></span>All systems operational</span>
+    </div>
+  </div>
+</footer>
+
+<script>
+  function toggleMenu() { document.getElementById('mobileMenu').classList.toggle('open'); }
+  window.addEventListener('resize', () => { if (window.innerWidth > 860) document.getElementById('mobileMenu').classList.remove('open'); });
+
+  function toggleFaq(el) {
+    el.parentElement.classList.toggle('open');
+  }
+</script>
+<style>
+  @media (max-width: 860px) {
+    #plan-grid { grid-template-columns: 1fr !important; max-width: 480px; }
+    .compare-row { grid-template-columns: 140px repeat(3,1fr) !important; font-size: 13px; }
+  }
+  @media (max-width: 540px) {
+    .compare-row > div { padding: 10px 8px; }
+    .compare-row > div:first-child { min-width: unset; }
+  }
+</style>
+</body>
+</html>

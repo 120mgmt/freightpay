@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg
+*.egg-info/
+.venv/
+venv/
+env/
+ENV/
+.env
+*.env
+!.env.example
+.coverage
+htmlcov/
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# pytest
+.pytest_cache/
+
+# Temp
+temp_alembic/
+instance/
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/dist-ssr/
+frontend/.vite/
+frontend/*.local
+frontend/.vercel/
+
+# IDEs
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store

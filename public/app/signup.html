@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Account — LedgerHaul</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="../assets/css/theme.css">
+  <link rel="stylesheet" href="../assets/css/components.css">
+  <style>
+    body { min-height: 100vh; display: flex; }
+    .auth-layout { display: grid; grid-template-columns: 1fr 1fr; min-height: 100vh; width: 100%; }
+    .auth-hero { background: radial-gradient(ellipse 80% 60% at 20% 50%, rgba(56,211,159,0.15) 0%, transparent 60%), #0D1521; display: flex; flex-direction: column; justify-content: center; padding: 60px; border-right: 1px solid var(--border); }
+    .auth-form-side { display: flex; align-items: center; justify-content: center; padding: 40px 24px; background: var(--bg); overflow-y: auto; }
+    .auth-form-wrap { width: 100%; max-width: 420px; }
+    .api-pill { display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; border: 1px solid; margin-bottom: 20px; }
+    @media (max-width: 800px) {
+      .auth-layout { grid-template-columns: 1fr; }
+      .auth-hero { display: none; }
+      .auth-form-side { padding: 32px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="auth-layout">
+
+  <!-- Hero side -->
+  <div class="auth-hero">
+    <a href="/" style="display:inline-block;margin-bottom:48px;"><img src="../assets/images/logo.png" alt="LedgerHaul" style="height:40px;width:auto;"></a>
+
+    <h1 style="font-size:36px;font-weight:800;color:#FFF;letter-spacing:-0.03em;line-height:1.15;margin-bottom:16px;">Ship the backend.<br><span style="background:linear-gradient(135deg,#38D39F,#2FC48E);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;">Run the freight.</span></h1>
+    <p style="font-size:15px;color:var(--text-muted);line-height:1.7;max-width:400px;margin-bottom:36px;">Deploy LedgerHaul in an afternoon. Calculate your first settlement before your next dispatch window closes.</p>
+
+    <div style="display:flex;flex-direction:column;gap:14px;margin-bottom:40px;">
+      <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-muted);">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green);flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        No credit card required to start
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-muted);">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green);flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        Full platform access during trial
+      </div>
+      <div style="display:flex;align-items:center;gap:12px;font-size:14px;color:var(--text-muted);">
+        <svg width="16" height="16" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2" style="color:var(--green);flex-shrink:0;"><path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7"/></svg>
+        Cancel anytime — no lock-in
+      </div>
+    </div>
+
+    <div style="padding:20px;background:rgba(255,255,255,0.03);border:1px solid var(--border);border-radius:16px;">
+      <div style="font-size:12px;color:var(--text-subtle);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px;">What you get on day 1</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;">
+        <div style="font-size:13px;color:var(--text-muted);">✦ Settlement engine</div>
+        <div style="font-size:13px;color:var(--text-muted);">✦ General ledger</div>
+        <div style="font-size:13px;color:var(--text-muted);">✦ Stripe billing</div>
+        <div style="font-size:13px;color:var(--text-muted);">✦ API access</div>
+        <div style="font-size:13px;color:var(--text-muted);">✦ 1099 export</div>
+        <div style="font-size:13px;color:var(--text-muted);">✦ Audit logs</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Form side -->
+  <div class="auth-form-side">
+    <div class="auth-form-wrap">
+      <a href="/" style="display:none;margin-bottom:32px;" class="mobile-logo"><img src="../assets/images/logo.png" alt="LedgerHaul" style="height:36px;width:auto;"></a>
+
+      <div id="apiPill" class="api-pill pill-neutral" style="border-color:var(--border);color:var(--text-subtle);background:rgba(255,255,255,0.04);">
+        <span class="dot" style="background:var(--text-subtle);"></span>
+        <span id="apiPillText">Connecting…</span>
+      </div>
+
+      <h2 style="font-size:28px;font-weight:800;color:#FFF;letter-spacing:-0.02em;margin-bottom:6px;">Create your account</h2>
+      <p style="font-size:14px;color:var(--text-muted);margin-bottom:28px;">Start your free trial — no credit card needed.</p>
+
+      <div id="errorMsg" style="display:none;" class="alert alert-error"></div>
+
+      <form id="signupForm" style="display:flex;flex-direction:column;gap:16px;">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div class="field">
+            <label for="firstName">First name</label>
+            <input type="text" id="firstName" name="first_name" placeholder="Jane" required>
+          </div>
+          <div class="field">
+            <label for="lastName">Last name</label>
+            <input type="text" id="lastName" name="last_name" placeholder="Smith" required>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="company">Company name</label>
+          <input type="text" id="company" name="company" placeholder="Acme Freight LLC" required>
+        </div>
+
+        <div class="field">
+          <label for="email">Work email</label>
+          <input type="email" id="email" name="email" placeholder="jane@company.com" autocomplete="email" required>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="At least 8 characters" autocomplete="new-password" required>
+        </div>
+
+        <div class="field">
+          <label for="confirmPassword">Confirm password</label>
+          <input type="password" id="confirmPassword" name="confirm_password" placeholder="Repeat password" autocomplete="new-password" required>
+        </div>
+
+        <label class="checkbox-field">
+          <input type="checkbox" id="termsAccepted" required>
+          <span>I agree to the <a href="../legal/terms.html" style="color:var(--green);">Terms of Service</a> and <a href="../legal/privacy.html" style="color:var(--green);">Privacy Policy</a></span>
+        </label>
+
+        <button type="submit" id="submitBtn" class="btn btn-primary" style="width:100%;justify-content:center;min-height:48px;font-size:15px;">
+          Create account
+        </button>
+      </form>
+
+      <p style="text-align:center;font-size:14px;color:var(--text-muted);margin-top:20px;">
+        Already have an account? <a href="login.html" style="color:var(--green);font-weight:600;">Sign in</a>
+      </p>
+    </div>
+  </div>
+</div>
+
+<script>
+  const API_BASE = (window.LH_CONFIG && window.LH_CONFIG.apiBase) ? window.LH_CONFIG.apiBase : '';
+  const pill = document.getElementById('apiPill');
+  const pillText = document.getElementById('apiPillText');
+  const errorMsg = document.getElementById('errorMsg');
+
+  function setPill(status, text) {
+    pill.className = 'api-pill';
+    pill.classList.add(status === 'ok' ? 'pill-ok' : status === 'error' ? 'pill-error' : 'pill-neutral');
+    pillText.textContent = text;
+  }
+
+  fetch(API_BASE + '/health').then(r => setPill(r.ok ? 'ok' : 'error', r.ok ? 'API online' : 'API unreachable')).catch(() => setPill('error', 'API unreachable'));
+
+  document.getElementById('signupForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = document.getElementById('submitBtn');
+    errorMsg.style.display = 'none';
+
+    const password = document.getElementById('password').value;
+    const confirm = document.getElementById('confirmPassword').value;
+
+    if (password !== confirm) {
+      errorMsg.style.display = 'flex';
+      errorMsg.textContent = 'Passwords do not match.';
+      return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="btn-spinner"></span> Creating account…';
+
+    try {
+      const res = await fetch(API_BASE + '/auth/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          first_name: document.getElementById('firstName').value,
+          last_name: document.getElementById('lastName').value,
+          company: document.getElementById('company').value,
+          email: document.getElementById('email').value,
+          password
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok) {
+        window.location.href = 'check-email.html';
+      } else {
+        errorMsg.style.display = 'flex';
+        errorMsg.textContent = data.message || data.error || 'Registration failed. Please try again.';
+        btn.disabled = false;
+        btn.textContent = 'Create account';
+      }
+    } catch (err) {
+      errorMsg.style.display = 'flex';
+      errorMsg.textContent = 'Unable to connect. Please try again.';
+      btn.disabled = false;
+      btn.textContent = 'Create account';
+    }
+  });
+</script>
+<style>
+  @media (max-width: 800px) { .mobile-logo { display: block !important; } }
+</style>
+</body>
+</html>

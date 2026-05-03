@@ -1,0 +1,115 @@
+# freightpay/users/routes.py
+# Purpose: User auth + registration routes (deployment-ready)
+# Status: Production-ready v5
+# Date: 2026-02-12
+
+from __future__ import annotations
+
+from flask import Blueprint, jsonify, request
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from models import User, Company
+from utils.database import get_db
+from utils.auth import require_auth, login_user
+
+users_bp = Blueprint("users", __name__, url_prefix="/users")
+
+
+@users_bp.post("/login")
+def login():
+    data = request.get_json(silent=True) or {}
+
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+
+    if not email or not password:
+        return jsonify({"error": "EMAIL_AND_PASSWORD_REQUIRED"}), 400
+
+    token, user = login_user(email=email, password=password)
+    if not token or not user or not user.is_active:
+        return jsonify({"error": "INVALID_CREDENTIALS"}), 401
+
+    # HARD ENFORCEMENT: block login until email is verified
+    if not hasattr(user, "email_verified"):
+        return jsonify({"error": "EMAIL_VERIFICATION_NOT_CONFIGURED"}), 500
+
+    if not bool(getattr(user, "email_verified", False)):
+        return jsonify({"error": "EMAIL_NOT_VERIFIED"}), 403
+
+    return jsonify(
+        {
+            "token": token,
+            "user": {
+                "id": str(user.id),
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "role": user.role,
+                "company_id": str(user.company_id),
+            },
+        }
+    ), 200
+
+
+@users_bp.post("/register")
+def register():
+    db: Session = get_db()
+    data = request.get_json(silent=True) or {}
+
+    company_name = (data.get("company_name") or "").strip()
+    email = (data.get("email") or "").strip().lower()
+    password = data.get("password") or ""
+    first_name = (data.get("first_name") or "").strip()
+    last_name = (data.get("last_name") or "").strip()
+
+    if not all([company_name, email, password, first_name, last_name]):
+        return jsonify({"error": "MISSING_REQUIRED_FIELDS"}), 400
+
+    if db.execute(select(User).where(User.email == email)).scalar_one_or_none():
+        return jsonify({"error": "EMAIL_ALREADY_EXISTS"}), 409
+
+    company = Company(name=company_name)
+    db.add(company)
+    db.flush()  # ensures company.id is available
+
+    user = User(
+        company_id=company.id,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        role="admin",
+        is_active=True,
+    )
+    user.set_password(password)
+
+    # Ensure new users are unverified by default if the field exists
+    if hasattr(user, "email_verified"):
+        setattr(user, "email_verified", False)
+
+    db.add(user)
+    db.commit()
+
+    return jsonify(
+        {
+            "status": "created",
+            "user_id": str(user.id),
+            "company_id": str(company.id),
+        }
+    ), 201
+
+
+@users_bp.get("/me")
+@require_auth
+def me(user: User):
+    return jsonify(
+        {
+            "id": str(user.id),
+            "email": user.email,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "role": user.role,
+            "company_id": str(user.company_id),
+            "is_active": user.is_active,
+        }
+    ), 200
