@@ -16,12 +16,9 @@ export const Navbar = () => {
   return (
     <header className="fixed top-0 inset-x-0 z-50 h-[65px] flex items-center bg-[rgba(8,13,17,0.7)] backdrop-blur-[24px] border-b border-border">
       <nav className="container mx-auto flex items-center justify-between px-6">
-        {/* Logo — green LH square + wordmark */}
-        <a href="#" className="flex items-center gap-3">
-          <div style={{ background:"rgb(54,211,148)", width:32, height:32, borderRadius:9, display:"flex", alignItems:"center", justifyContent:"center", color:"rgb(14,20,27)", fontWeight:700, fontSize:13, letterSpacing:"-0.5px", flexShrink:0 }}>
-            LH
-          </div>
-          <span className="font-semibold text-white text-[18px] tracking-tight">LedgerHaul</span>
+        {/* Logo */}
+        <a href="#" className="flex items-center">
+          <img src="/Logo.png" alt="LedgerHaul" className="h-10 w-auto" />
         </a>
 
         {/* Desktop nav pill */}

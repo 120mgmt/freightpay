@@ -25,12 +25,8 @@ export const Footer = () => {
 
           {/* Brand column */}
           <div className="md:col-span-2">
-            <div className="flex items-center gap-3 mb-4">
-              {/* Green LH square */}
-              <div style={{ background: "rgb(54,211,148)", width: 32, height: 32, borderRadius: 9, display: "flex", alignItems: "center", justifyContent: "center", color: "rgb(14,20,27)", fontWeight: 700, fontSize: 13, letterSpacing: "-0.5px", flexShrink: 0 }}>
-                LH
-              </div>
-              <span className="font-semibold text-white text-lg">LedgerHaul</span>
+            <div className="mb-4">
+              <img src="/Logo.png" alt="LedgerHaul" className="h-10 w-auto" />
             </div>
             <p className="text-sm text-muted-foreground max-w-xs leading-relaxed">
               Production backend service for payroll, settlements, bookkeeping, and
