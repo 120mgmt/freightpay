@@ -1,7 +1,10 @@
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ArrowRight, Terminal } from "lucide-react";
 
 export const Hero = () => {
+  const navigate = useNavigate();
+
   return (
     <section className="relative pt-32 pb-24 overflow-hidden">
       {/* Backgrounds */}
@@ -42,6 +45,7 @@ export const Hero = () => {
               size="lg"
               className="group text-[15px] font-semibold px-8 py-3 h-auto"
               style={{ background: "rgb(54,211,148)", color: "rgb(14,20,27)", borderRadius: 12, boxShadow: "0 0 40px rgba(54,211,148,0.35)" }}
+              onClick={() => navigate("/register")}
             >
               Start free trial
               <ArrowRight className="ml-2 transition-transform group-hover:translate-x-1" size={16} />
@@ -51,6 +55,7 @@ export const Hero = () => {
               size="lg"
               className="group text-[15px] font-medium px-8 py-3 h-auto border-border bg-transparent text-muted-foreground hover:text-foreground"
               style={{ borderRadius: 12 }}
+              onClick={() => navigate("/docs")}
             >
               <Terminal size={15} className="mr-2" />
               View API docs

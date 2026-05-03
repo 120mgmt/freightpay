@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,8 @@ const plans = [
 ];
 
 export const Pricing = () => {
+  const navigate = useNavigate();
+
   return (
     <section id="pricing" className="relative py-32 overflow-hidden">
       <div className="absolute inset-0 bg-radial-glow opacity-60" />
@@ -111,6 +114,7 @@ export const Pricing = () => {
                   ? { background: "rgb(54,211,148)", color: "rgb(14,20,27)", boxShadow: "0 0 30px rgba(54,211,148,0.3)" }
                   : { background: "transparent", border: "1px solid rgb(33,42,54)", color: "rgb(183,197,215)" }
                 }
+                onClick={() => navigate("/register")}
               >
                 {p.cta}
               </Button>
