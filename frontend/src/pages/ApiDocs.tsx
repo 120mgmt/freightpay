@@ -92,7 +92,7 @@ const ApiDocs = () => {
       <header className="sticky top-0 z-50 h-[80px] flex items-center border-b border-border px-6"
         style={{ background: "rgba(8,13,17,0.85)", backdropFilter: "blur(24px)" }}>
         <Link to="/" className="flex items-center">
-          <img src="/Logo.png" alt="LedgerHaul" className="h-14 w-auto" />
+          <img src="/Logo.png" alt="LedgerHaul" className="h-20 w-auto" />
         </Link>
         <span className="ml-4 text-sm font-mono text-muted-foreground border-l border-border pl-4">
           API Reference
