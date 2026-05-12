@@ -32,7 +32,7 @@ export const Navbar = () => {
       <nav className="container mx-auto flex items-center justify-between px-6">
         {/* Logo */}
         <a href="/" className="flex items-center" onClick={(e) => { e.preventDefault(); navigate("/"); }}>
-          <img src="/Logo.png" alt="LedgerHaul" className="h-14 w-auto" />
+          <img src="/Logo.png" alt="LedgerHaul" className="h-20 w-auto" />
         </a>
 
         {/* Desktop nav pill */}
