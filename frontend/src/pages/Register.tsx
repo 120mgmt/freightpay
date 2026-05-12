@@ -96,7 +96,7 @@ const Register = () => {
       <div className="flex-1 flex items-center justify-center px-6">
         <div className="w-full max-w-md">
           <Link to="/" className="inline-block mb-10">
-            <img src="/Logo.png" alt="LedgerHaul" className="h-14 w-auto" />
+            <img src="/Logo.png" alt="LedgerHaul" className="h-20 w-auto" />
           </Link>
 
           <h1 className="text-3xl font-semibold text-white mb-2">Create your account</h1>
