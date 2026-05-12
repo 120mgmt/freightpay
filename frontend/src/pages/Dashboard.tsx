@@ -35,7 +35,7 @@ const Dashboard = () => {
       <header className="h-[80px] flex items-center border-b border-border px-6"
         style={{ background: "rgba(8,13,17,0.7)", backdropFilter: "blur(24px)" }}>
         <Link to="/" className="flex items-center">
-          <img src="/Logo.png" alt="LedgerHaul" className="h-14 w-auto" />
+          <img src="/Logo.png" alt="LedgerHaul" className="h-20 w-auto" />
         </Link>
         <div className="ml-auto flex items-center gap-4">
           <div className="text-right hidden sm:block">
