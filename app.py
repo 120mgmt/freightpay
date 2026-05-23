@@ -302,7 +302,7 @@ app.register_blueprint(pricing_cpm_bp)
 app.register_blueprint(admin_pricing_cpm_bp)
 
 # Driver settlements
-app.register_blueprint(driver_settlement_bp)
+# app.register_blueprint(driver_settlement_bp)
 
 # Bank connections
 app.register_blueprint(bank_connections_bp)
