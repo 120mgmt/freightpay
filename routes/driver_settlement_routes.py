@@ -13,8 +13,7 @@ from flask import Blueprint, jsonify, request
 
 from billing.subscription_gate import require_active_subscription
 from services.driver_settlement_service import (
-    get_driver_settlement,
-    list_driver_settlements,
+    run_driver_settlement,
 )
 from utils.auth import require_auth, get_current_user
 
