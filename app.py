@@ -37,7 +37,7 @@ from routes.reconciliation import reconciliation_bp
 from routes.reporting import reporting_bp
 from routes.contractor import contractor_bp
 from routes.tax_1099 import tax_1099_bp
-from routes.driver_settlement_routes import driver_settlement_bp
+# from routes.driver_settlement_routes import driver_settlement_bp
 from routes.bank_connections import bank_connections_bp
 from routes.coa import coa_bp
 from routes.demo_routes import demo_bp
