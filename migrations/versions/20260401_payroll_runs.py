@@ -9,7 +9,7 @@ from alembic import op
 import sqlalchemy as sa
 
 revision = "20260401_payroll_runs"
-down_revision = "20260323_contractors_and_ledger_entries"
+down_revision = "20260323_ctr_ledger"
 branch_labels = None
 depends_on = None
 
