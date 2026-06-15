@@ -6,13 +6,28 @@
 from __future__ import annotations
 
 import os
+import time
+from collections import defaultdict
 from datetime import timedelta
+from threading import Lock
 from typing import Any, Dict, Optional, Tuple
 
 from flask import Blueprint, jsonify, request
-import time
-from collections import defaultdict
-from threading import Lock
+from flask_jwt_extended import (
+    create_access_token,
+    create_refresh_token,
+    get_jwt_identity,
+    get_jwt,
+    jwt_required,
+)
+from sqlalchemy import select
+
+from db import db
+from models.company import Company
+from models.user import User
+from models.refresh_token import RefreshToken
+from users.email_verification import generate_verification_token
+from utils.mailer import send_email
 
 # ─── Brute-force / rate-limit state (in-memory, per-process) ───────────────
 # For multi-process deploys, swap this for Redis-backed storage.
@@ -43,23 +58,6 @@ def _record_failed_attempt(email: str) -> None:
 def _clear_attempts(email: str) -> None:
     with _login_lock:
         _login_attempts.pop(email, None)
-
-
-from flask_jwt_extended import (
-    create_access_token,
-    create_refresh_token,
-    get_jwt_identity,
-    get_jwt,
-    jwt_required,
-)
-from sqlalchemy import select
-
-from db import db
-from models.company import Company
-from models.user import User
-from models.refresh_token import RefreshToken
-from users.email_verification import generate_verification_token
-from utils.mailer import send_email
 
 auth_bp = Blueprint("auth", __name__, url_prefix="/auth")
 

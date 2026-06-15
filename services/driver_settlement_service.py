@@ -200,3 +200,66 @@ class DriverSettlementService:
             session.add(execution_log)
 
         return settlement
+
+
+def _settlement_to_dict(s: DriverSettlement) -> dict:
+    return {
+        "settlement_id": str(s.id),
+        "company_id": s.company_id,
+        "driver_id": s.driver_id,
+        "period_label": s.period_label,
+        "gross_amount": str(s.gross_amount),
+        "deductions": str(s.deductions),
+        "net_amount": str(s.net_amount),
+        "locked": s.locked,
+        "created_at": s.created_at.isoformat(),
+    }
+
+
+def execute_driver_settlement_batch(
+    *,
+    company_id: int,
+    driver_id: int,
+    period_label: str,
+    load_ids,
+    deductions,
+    executed_by_user_id,
+) -> dict:
+    settlement = DriverSettlementService.execute_settlement(
+        company_id=company_id,
+        driver_id=driver_id,
+        period_label=period_label,
+        executed_by_user_id=executed_by_user_id,
+    )
+    return _settlement_to_dict(settlement)
+
+
+def get_driver_settlement(*, company_id: int, settlement_id: str) -> dict:
+    result = db.session.execute(
+        select(DriverSettlement).where(
+            DriverSettlement.id == settlement_id,
+            DriverSettlement.company_id == company_id,
+        )
+    ).scalar_one_or_none()
+    if result is None:
+        raise LookupError(f"Settlement {settlement_id} not found.")
+    return _settlement_to_dict(result)
+
+
+def list_driver_settlements(
+    *,
+    company_id: int,
+    driver_id: int | None = None,
+    period_label: str | None = None,
+    limit: int = 25,
+) -> list:
+    stmt = select(DriverSettlement).where(
+        DriverSettlement.company_id == company_id,
+    )
+    if driver_id is not None:
+        stmt = stmt.where(DriverSettlement.driver_id == driver_id)
+    if period_label is not None:
+        stmt = stmt.where(DriverSettlement.period_label == period_label)
+    stmt = stmt.order_by(DriverSettlement.created_at.desc()).limit(limit)
+    rows = db.session.execute(stmt).scalars().all()
+    return [_settlement_to_dict(s) for s in rows]
