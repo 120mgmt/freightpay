@@ -12,15 +12,20 @@ import Dashboard from "./pages/Dashboard.tsx";
 import ApiDocs from "./pages/ApiDocs.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import VerifyEmail from "./pages/VerifyEmail.tsx";
+import ForgotPassword from "./pages/ForgotPassword.tsx";
+import ResetPassword from "./pages/ResetPassword.tsx";
 import Payroll from "./pages/Payroll.tsx";
 import Contractors from "./pages/Contractors.tsx";
 import Bookkeeping from "./pages/Bookkeeping.tsx";
 import Reports from "./pages/Reports.tsx";
 import Billing from "./pages/Billing.tsx";
+import Settings from "./pages/Settings.tsx";
+import Terms from "./pages/Terms.tsx";
+import Privacy from "./pages/Privacy.tsx";
 
 const queryClient = new QueryClient();
 
-const protected_ = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>;
+const guard = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -30,18 +35,25 @@ const App = () => (
         <Sonner />
         <BrowserRouter>
           <Routes>
+            {/* Public */}
             <Route path="/" element={<Index />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/register" element={<Register />} />
             <Route path="/docs" element={<ApiDocs />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route path="/dashboard"   element={protected_(<Dashboard />)} />
-            <Route path="/payroll"     element={protected_(<Payroll />)} />
-            <Route path="/settlements" element={protected_(<Contractors />)} />
-            <Route path="/bookkeeping" element={protected_(<Bookkeeping />)} />
-            <Route path="/reports"     element={protected_(<Reports />)} />
-            <Route path="/billing"     element={protected_(<Billing />)} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/terms" element={<Terms />} />
+            <Route path="/privacy" element={<Privacy />} />
+            {/* Protected */}
+            <Route path="/dashboard"   element={guard(<Dashboard />)} />
+            <Route path="/payroll"     element={guard(<Payroll />)} />
+            <Route path="/settlements" element={guard(<Contractors />)} />
+            <Route path="/bookkeeping" element={guard(<Bookkeeping />)} />
+            <Route path="/reports"     element={guard(<Reports />)} />
+            <Route path="/billing"     element={guard(<Billing />)} />
+            <Route path="/settings"    element={guard(<Settings />)} />
+            {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

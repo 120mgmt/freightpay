@@ -116,9 +116,9 @@ const SignIn = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password" className="text-sm text-foreground/80">Password</Label>
-                <a href="#" className="text-xs hover:underline" style={{ color: "rgb(54,211,148)" }}>
+                <Link to="/forgot-password" className="text-xs hover:underline" style={{ color: "rgb(54,211,148)" }}>
                   Forgot password?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <Input

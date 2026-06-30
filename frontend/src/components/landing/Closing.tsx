@@ -16,23 +16,23 @@ const cols = [
     title: "Resources",
     links: [
       { label: "API docs", href: "/docs" },
-      { label: "Support", href: "#" },
-      { label: "Status", href: "#" },
+      { label: "Support", href: "mailto:support@ledgerhaul.com" },
+      { label: "Dashboard", href: "/dashboard" },
     ],
   },
   {
     title: "Company",
     links: [
-      { label: "About", href: "#" },
-      { label: "Contact", href: "#" },
+      { label: "Contact", href: "mailto:hello@ledgerhaul.com" },
+      { label: "Careers", href: "mailto:jobs@ledgerhaul.com" },
     ],
   },
   {
     title: "Legal",
     links: [
-      { label: "Terms", href: "#" },
-      { label: "Privacy", href: "#" },
-      { label: "Security", href: "#" },
+      { label: "Terms", href: "/terms" },
+      { label: "Privacy", href: "/privacy" },
+      { label: "Security", href: "mailto:security@ledgerhaul.com" },
     ],
   },
 ];
@@ -42,7 +42,8 @@ export const Closing = () => {
   const navigate = useNavigate();
 
   const go = (href: string) => {
-    if (href.startsWith("/")) navigate(href);
+    if (href.startsWith("mailto:")) { window.location.href = href; }
+    else if (href.startsWith("/")) navigate(href);
     else if (href !== "#") document.querySelector(href)?.scrollIntoView({ behavior: "smooth" });
   };
 
