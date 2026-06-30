@@ -1,9 +1,11 @@
 # freightpay/users/routes.py
 # Purpose: User auth + registration routes (deployment-ready)
-# Status: Production-ready v5
-# Date: 2026-02-12
+# Status: Production-ready v6
+# Date: 2026-06-30
 
 from __future__ import annotations
+
+import re
 
 from flask import Blueprint, jsonify, request
 from sqlalchemy import select
@@ -11,9 +13,28 @@ from sqlalchemy.orm import Session
 
 from models import User, Company
 from utils.database import get_db
-from utils.auth import require_auth, login_user
+from utils.auth import require_auth, login_user, get_current_user
 
 users_bp = Blueprint("users", __name__, url_prefix="/users")
+
+
+def _slugify(name: str) -> str:
+    slug = name.lower().strip()
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
+    slug = slug.strip("-")
+    return slug or "company"
+
+
+def _unique_slug(db: Session, base: str) -> str:
+    slug = base[:140]
+    if not db.execute(select(Company).where(Company.slug == slug)).scalar_one_or_none():
+        return slug
+    for i in range(2, 10000):
+        candidate = f"{base[:136]}-{i}"
+        if not db.execute(select(Company).where(Company.slug == candidate)).scalar_one_or_none():
+            return candidate
+    import uuid
+    return str(uuid.uuid4())[:36]
 
 
 @users_bp.post("/login")
@@ -26,16 +47,19 @@ def login():
     if not email or not password:
         return jsonify({"error": "EMAIL_AND_PASSWORD_REQUIRED"}), 400
 
-    token, user = login_user(email=email, password=password)
-    if not token or not user or not user.is_active:
+    db: Session = get_db()
+    user = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
+
+    if not user or not user.is_active:
         return jsonify({"error": "INVALID_CREDENTIALS"}), 401
 
-    # HARD ENFORCEMENT: block login until email is verified
-    if not hasattr(user, "email_verified"):
-        return jsonify({"error": "EMAIL_VERIFICATION_NOT_CONFIGURED"}), 500
+    if not user.check_password(password):
+        return jsonify({"error": "INVALID_CREDENTIALS"}), 401
 
     if not bool(getattr(user, "email_verified", False)):
         return jsonify({"error": "EMAIL_NOT_VERIFIED"}), 403
+
+    token = login_user(user=user)
 
     return jsonify(
         {
@@ -69,9 +93,11 @@ def register():
     if db.execute(select(User).where(User.email == email)).scalar_one_or_none():
         return jsonify({"error": "EMAIL_ALREADY_EXISTS"}), 409
 
-    company = Company(name=company_name)
+    slug = _unique_slug(db, _slugify(company_name))
+
+    company = Company(name=company_name, slug=slug)
     db.add(company)
-    db.flush()  # ensures company.id is available
+    db.flush()
 
     user = User(
         company_id=company.id,
@@ -80,12 +106,9 @@ def register():
         last_name=last_name,
         role="admin",
         is_active=True,
+        email_verified=False,
     )
     user.set_password(password)
-
-    # Ensure new users are unverified by default if the field exists
-    if hasattr(user, "email_verified"):
-        setattr(user, "email_verified", False)
 
     db.add(user)
     db.commit()
@@ -101,7 +124,10 @@ def register():
 
 @users_bp.get("/me")
 @require_auth
-def me(user: User):
+def me():
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "UNAUTHORIZED"}), 401
     return jsonify(
         {
             "id": str(user.id),
