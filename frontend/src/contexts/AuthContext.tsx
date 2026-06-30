@@ -14,7 +14,7 @@ interface AuthContextType {
   token: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (email: string, password: string) => Promise<{ success: boolean; error?: string; code?: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
   logout: () => void;
 }
@@ -66,7 +66,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           INVALID_CREDENTIALS: "Invalid email or password.",
           EMAIL_NOT_VERIFIED: "Please verify your email before signing in.",
         };
-        return { success: false, error: errorMap[data.error] || data.error || "Login failed." };
+        return { success: false, error: errorMap[data.error] || data.error || "Login failed.", code: data.error };
       }
       setToken(data.token);
       setUser(data.user);

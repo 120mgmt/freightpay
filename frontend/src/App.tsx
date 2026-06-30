@@ -11,6 +11,7 @@ import Register from "./pages/Register.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
 import ApiDocs from "./pages/ApiDocs.tsx";
 import NotFound from "./pages/NotFound.tsx";
+import VerifyEmail from "./pages/VerifyEmail.tsx";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ const App = () => (
             <Route path="/signin" element={<SignIn />} />
             <Route path="/register" element={<Register />} />
             <Route path="/docs" element={<ApiDocs />} />
+            <Route path="/verify-email" element={<VerifyEmail />} />
             <Route
               path="/dashboard"
               element={

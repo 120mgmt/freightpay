@@ -113,6 +113,28 @@ def register():
     db.add(user)
     db.commit()
 
+    # Send verification email — non-blocking, registration still succeeds if SMTP fails
+    try:
+        import os as _os
+        from users.email_verification import generate_verification_token
+        from utils.mailer import send_email
+        _token = generate_verification_token(user.email)
+        _base = _os.getenv("BASE_URL", "https://ledgerhaul.com").rstrip("/")
+        _url = f"{_base}/verify-email?token={_token}"
+        _html = (
+            f"<div style='font-family:Arial,sans-serif;'>"
+            f"<p>Hi {first_name},</p>"
+            f"<p>Please verify your email to activate your LedgerHaul account.</p>"
+            f"<p><a href='{_url}' style='display:inline-block;padding:10px 20px;"
+            f"background:#36D394;color:#0E141B;border-radius:6px;"
+            f"text-decoration:none;font-weight:600;'>Verify Email</a></p>"
+            f"<p style='color:#888;font-size:13px;'>This link expires in 24 hours.</p>"
+            f"</div>"
+        )
+        send_email(to_email=user.email, subject="Verify your LedgerHaul email", html_body=_html)
+    except Exception:
+        pass
+
     return jsonify(
         {
             "status": "created",
