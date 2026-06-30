@@ -1,3 +1,14 @@
 {
-  "rewrites": [{ "source": "/(.*)", "destination": "/index.html" }]
+  "rewrites": [
+    { "source": "/users/:path*",          "destination": "https://ledgerhaul.com/users/:path*" },
+    { "source": "/verify/:path*",         "destination": "https://ledgerhaul.com/verify/:path*" },
+    { "source": "/api/:path*",            "destination": "https://ledgerhaul.com/api/:path*" },
+    { "source": "/payroll/:path*",        "destination": "https://ledgerhaul.com/payroll/:path*" },
+    { "source": "/coa/:path*",            "destination": "https://ledgerhaul.com/coa/:path*" },
+    { "source": "/reporting/:path*",      "destination": "https://ledgerhaul.com/reporting/:path*" },
+    { "source": "/billing/:path*",        "destination": "https://ledgerhaul.com/billing/:path*" },
+    { "source": "/reconciliation/:path*", "destination": "https://ledgerhaul.com/reconciliation/:path*" },
+    { "source": "/settlements/:path*",    "destination": "https://ledgerhaul.com/settlements/:path*" },
+    { "source": "/(.*)",                  "destination": "/index.html" }
+  ]
 }

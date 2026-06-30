@@ -157,9 +157,20 @@ if cors_origins_raw:
 else:
     allowed_origins = [BASE_URL]
 
+# Always allow Vercel preview URLs (pattern match)
+import re as _re
+_VERCEL_RE = _re.compile(r"^https://[a-z0-9-]+-[a-z0-9]+-projects\.vercel\.app$")
+
+def _origin_allowed(origin: str) -> bool:
+    if origin in allowed_origins:
+        return True
+    if _VERCEL_RE.match(origin):
+        return True
+    return False
+
 CORS(
     app,
-    resources={r"/*": {"origins": allowed_origins}},
+    resources={r"/*": {"origins": _origin_allowed}},
     supports_credentials=True,
 )
 
