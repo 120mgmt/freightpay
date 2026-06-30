@@ -12,8 +12,15 @@ import Dashboard from "./pages/Dashboard.tsx";
 import ApiDocs from "./pages/ApiDocs.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import VerifyEmail from "./pages/VerifyEmail.tsx";
+import Payroll from "./pages/Payroll.tsx";
+import Contractors from "./pages/Contractors.tsx";
+import Bookkeeping from "./pages/Bookkeeping.tsx";
+import Reports from "./pages/Reports.tsx";
+import Billing from "./pages/Billing.tsx";
 
 const queryClient = new QueryClient();
+
+const protected_ = (el: React.ReactNode) => <ProtectedRoute>{el}</ProtectedRoute>;
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -28,14 +35,12 @@ const App = () => (
             <Route path="/register" element={<Register />} />
             <Route path="/docs" element={<ApiDocs />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/dashboard"   element={protected_(<Dashboard />)} />
+            <Route path="/payroll"     element={protected_(<Payroll />)} />
+            <Route path="/settlements" element={protected_(<Contractors />)} />
+            <Route path="/bookkeeping" element={protected_(<Bookkeeping />)} />
+            <Route path="/reports"     element={protected_(<Reports />)} />
+            <Route path="/billing"     element={protected_(<Billing />)} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
