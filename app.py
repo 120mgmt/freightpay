@@ -42,6 +42,7 @@ from routes.bank_connections import bank_connections_bp
 from routes.coa import coa_bp
 from routes.demo_routes import demo_bp
 from users.email_verification import email_verify_bp
+from users.routes import users_bp
 from app_factory_cli import register_app_cli
 from utils.legal_guard import enforce_legal_acceptance
 from utils.subscription_guard import enforce_subscription_active
@@ -226,6 +227,8 @@ def _path_is_public(p: str) -> bool:
         "/auth/login",
         "/auth/register",
         "/auth/signup",
+        "/users/login",
+        "/users/register",
         "/verify/",
         "/auth/legal/accept",
         "/compliance/legal/accept",
@@ -267,6 +270,7 @@ app.register_blueprint(reconciliation_bp)
 
 app.register_blueprint(company_bp)
 app.register_blueprint(auth_bp)
+app.register_blueprint(users_bp)
 app.register_blueprint(email_verify_bp)
 
 # Payroll
