@@ -7,6 +7,7 @@
 
 import logging
 import os
+import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
@@ -158,8 +159,7 @@ else:
     allowed_origins = [BASE_URL]
 
 # Always allow Vercel preview URLs (pattern match)
-import re as _re
-_VERCEL_RE = _re.compile(r"^https://[a-z0-9-]+-[a-z0-9]+-projects\.vercel\.app$")
+_VERCEL_RE = re.compile(r"^https://[a-z0-9-]+-[a-z0-9]+-projects\.vercel\.app$")
 
 def _origin_allowed(origin: str) -> bool:
     if origin in allowed_origins:
