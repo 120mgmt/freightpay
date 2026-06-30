@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 
+const API_BASE = import.meta.env.VITE_API_URL || "";
+
 const SignIn = () => {
   const { login } = useAuth();
   const navigate = useNavigate();
@@ -13,11 +15,16 @@ const SignIn = () => {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [errorCode, setErrorCode] = useState("");
   const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendMsg, setResendMsg] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setErrorCode("");
+    setResendMsg("");
     setLoading(true);
     const result = await login(email, password);
     setLoading(false);
@@ -27,7 +34,29 @@ const SignIn = () => {
       navigate(redirect);
     } else {
       setError(result.error || "Login failed.");
+      setErrorCode(result.code || "");
     }
+  };
+
+  const handleResend = async () => {
+    setResendLoading(true);
+    setResendMsg("");
+    try {
+      const res = await fetch(`${API_BASE}/verify/send`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setResendMsg("Verification email sent — check your inbox.");
+      } else {
+        setResendMsg(data.error === "user_not_found" ? "No account found with that email." : "Could not resend — try again.");
+      }
+    } catch {
+      setResendMsg("Network error. Please try again.");
+    }
+    setResendLoading(false);
   };
 
   return (
@@ -46,9 +75,27 @@ const SignIn = () => {
           </p>
 
           {error && (
-            <div className="mb-6 p-3 rounded-lg text-sm font-medium"
+            <div className="mb-4 p-3 rounded-lg text-sm font-medium"
               style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "rgb(248,113,113)" }}>
               {error}
+            </div>
+          )}
+
+          {errorCode === "EMAIL_NOT_VERIFIED" && (
+            <div className="mb-6 text-sm text-center">
+              {resendMsg ? (
+                <p style={{ color: "rgb(54,211,148)" }}>{resendMsg}</p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResend}
+                  disabled={resendLoading}
+                  className="hover:underline"
+                  style={{ color: "rgb(54,211,148)" }}
+                >
+                  {resendLoading ? "Sending…" : "Resend verification email"}
+                </button>
+              )}
             </div>
           )}
 
@@ -69,9 +116,9 @@ const SignIn = () => {
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <Label htmlFor="password" className="text-sm text-foreground/80">Password</Label>
-                <a href="#" className="text-xs hover:underline" style={{ color: "rgb(54,211,148)" }}>
+                <Link to="/forgot-password" className="text-xs hover:underline" style={{ color: "rgb(54,211,148)" }}>
                   Forgot password?
-                </a>
+                </Link>
               </div>
               <div className="relative">
                 <Input

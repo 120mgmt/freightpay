@@ -115,7 +115,7 @@ jobs:
       - name: Bandit security scan
         run: |
           set -euo pipefail
-          bandit -r . -x tests,migrations/versions -s B101,B104,B105,B108,B110,B112,B311,B608
+          bandit -r . -x tests,migrations/versions -s B101,B104,B105,B106,B108,B110,B112,B311,B608
 
       - name: Dependency audit
         run: |

@@ -12,10 +12,11 @@ from typing import Any, Dict, List, Optional
 from flask import Blueprint, jsonify, request
 
 from billing.subscription_gate import require_active_subscription
-# from services.driver_settlement_service import (
-#     get_driver_settlement,
-#     list_driver_settlements,
-# )
+from services.driver_settlement_service import (
+    execute_driver_settlement_batch,
+    get_driver_settlement,
+    list_driver_settlements,
+)
 from utils.auth import require_auth, get_current_user
 
 driver_settlement_bp = Blueprint("driver_settlement_api_v1", __name__, url_prefix="/settlements")

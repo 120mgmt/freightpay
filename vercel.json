@@ -1,0 +1,9 @@
+{
+  "framework": null,
+  "installCommand": "",
+  "buildCommand": "",
+  "outputDirectory": "public",
+  "redirects": [
+    { "source": "/(.*)", "destination": "https://ledgerhaul.com/$1", "permanent": false }
+  ]
+}

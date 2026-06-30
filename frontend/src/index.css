@@ -121,6 +121,80 @@
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* LedgerHaul marketing site theme (scoped)                            */
+/* Light paper surface, ink text, brand emerald accent.                */
+/* Radius system: cards/images 16px (rounded-2xl), buttons pill,       */
+/* inputs 8px. Applies only inside .landing; app pages keep dark theme.*/
+/* ------------------------------------------------------------------ */
+
+.landing {
+  --background: 45 18% 98%;
+  --foreground: 200 35% 11%;
+
+  --surface: 0 0% 100%;
+  --surface-elevated: 0 0% 100%;
+  --surface-muted: 45 14% 95%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 200 35% 11%;
+
+  --primary: 161 62% 30%;            /* deep emerald, AA on white */
+  --primary-foreground: 0 0% 100%;
+  --primary-glow: 160 73% 43%;       /* brand mint from the logo */
+  --primary-dim: 161 40% 24%;
+
+  --secondary: 45 14% 94%;
+  --secondary-foreground: 200 35% 11%;
+
+  --muted: 45 14% 94%;
+  --muted-foreground: 202 14% 38%;
+
+  --accent: 161 62% 30%;
+  --accent-foreground: 0 0% 100%;
+
+  --border: 200 14% 88%;
+  --input: 200 14% 86%;
+  --ring: 161 62% 30%;
+
+  /* Single dark color block (closing CTA + footer) */
+  --ink: 192 30% 8%;
+  --ink-soft: 192 22% 14%;
+
+  font-family: 'Archivo Variable', system-ui, sans-serif;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.landing ::selection {
+  background: hsl(161 62% 30% / 0.18);
+  color: hsl(200 35% 11%);
+}
+
+/* Scroll reveal */
+.landing .reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+    transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.landing .reveal.in-view {
+  opacity: 1;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing .reveal {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .landing [class*="animate-"] {
+    animation: none !important;
+  }
+}
+
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.5; transform: scale(1.3); }

@@ -211,9 +211,9 @@ const Register = () => {
 
           <p className="mt-4 text-center text-xs text-muted-foreground/60">
             By creating an account you agree to our{" "}
-            <a href="#" className="underline hover:text-muted-foreground">Terms of Service</a>
+            <Link to="/terms" className="underline hover:text-muted-foreground">Terms of Service</Link>
             {" "}and{" "}
-            <a href="#" className="underline hover:text-muted-foreground">Privacy Policy</a>.
+            <Link to="/privacy" className="underline hover:text-muted-foreground">Privacy Policy</Link>.
           </p>
         </div>
       </div>

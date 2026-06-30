@@ -1,25 +1,27 @@
-import { Navbar } from "@/components/site/Navbar";
-import { Hero } from "@/components/site/Hero";
-import { Stack } from "@/components/site/Stack";
-import { Features } from "@/components/site/Features";
-import { Capabilities } from "@/components/site/Capabilities";
-import { Pricing } from "@/components/site/Pricing";
-import { CTA } from "@/components/site/CTA";
-import { Footer } from "@/components/site/Footer";
+import { Navbar } from "@/components/landing/Navbar";
+import { Hero } from "@/components/landing/Hero";
+import { FactsBar } from "@/components/landing/FactsBar";
+import { Settlements } from "@/components/landing/Settlements";
+import { Features } from "@/components/landing/Features";
+import { Compare } from "@/components/landing/Compare";
+import { Pricing } from "@/components/landing/Pricing";
+import { Testimonial } from "@/components/landing/Testimonial";
+import { Closing } from "@/components/landing/Closing";
 
 const Index = () => {
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="landing min-h-[100dvh] antialiased">
       <Navbar />
       <main>
         <Hero />
-        <Stack />
+        <FactsBar />
+        <Settlements />
         <Features />
-        <Capabilities />
+        <Compare />
         <Pricing />
-        <CTA />
+        <Testimonial />
       </main>
-      <Footer />
+      <Closing />
     </div>
   );
 };
