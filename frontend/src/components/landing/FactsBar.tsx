@@ -11,7 +11,7 @@ const facts = [
   },
   {
     label: "Year-end ready",
-    detail: "1099-NEC and W-2 filing built in",
+    detail: "1099-NEC filing built in",
   },
   {
     label: "Books included",

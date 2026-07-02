@@ -15,12 +15,12 @@ const PLANS = [
   {
     key: "payroll_only",
     name: "Payroll Only",
-    price: "$189",
-    period: "/mo + $7 per driver",
+    price: "$29",
+    period: "/mo + $5 per driver",
     features: [
       "Driver and contractor settlements",
       "Direct deposit payouts",
-      "1099-NEC and W-2 generation",
+      "1099-NEC generation",
       "Driver statement portal",
       "Email and chat support",
     ],
@@ -28,8 +28,8 @@ const PLANS = [
   {
     key: "combo",
     name: "Combo",
-    price: "$249",
-    period: "/mo + $9 per worker",
+    price: "$49",
+    period: "/mo + $5 per driver",
     features: [
       "Everything in Payroll and Bookkeeping",
       "Unified general ledger",
@@ -42,7 +42,7 @@ const PLANS = [
   {
     key: "bookkeeping_only",
     name: "Bookkeeping Only",
-    price: "$149",
+    price: "$25",
     period: "/mo flat",
     features: [
       "Unlimited transactions",

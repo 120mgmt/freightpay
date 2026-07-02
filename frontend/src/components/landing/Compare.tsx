@@ -7,7 +7,7 @@ const rows: { feature: string; lh: Mark; general: Mark; trucking: Mark }[] = [
   { feature: "Per-mile, per-load & percentage pay", lh: "yes", general: "no", trucking: "yes" },
   { feature: "Fuel advances, escrow & IFTA deductions", lh: "yes", general: "no", trucking: "partial" },
   { feature: "Direct-deposit driver payouts", lh: "yes", general: "yes", trucking: "no" },
-  { feature: "1099-NEC & W-2 filing", lh: "yes", general: "yes", trucking: "no" },
+  { feature: "1099-NEC filing", lh: "yes", general: "yes", trucking: "no" },
   { feature: "Double-entry books tied to settlements", lh: "yes", general: "no", trucking: "no" },
   { feature: "Audit trail on every transaction", lh: "yes", general: "partial", trucking: "no" },
 ];

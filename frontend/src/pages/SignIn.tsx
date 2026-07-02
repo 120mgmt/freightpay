@@ -169,15 +169,15 @@ const SignIn = () => {
         </div>
       </div>
 
-      {/* Right — dark brand panel */}
-      <div className="hidden lg:flex flex-1 items-center justify-center relative overflow-hidden bg-[hsl(var(--ink))]">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full blur-[100px] bg-[hsl(var(--primary-glow)/0.2)]" />
+      {/* Right — brand panel */}
+      <div className="hidden lg:flex flex-1 items-center justify-center relative overflow-hidden bg-surface-muted border-l border-border">
+        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full blur-[100px] bg-[hsl(var(--primary-glow)/0.15)]" />
         <div className="relative text-center px-12">
-          <img src="/Logo.png" alt="" className="h-28 w-auto mx-auto mb-8" />
-          <h2 className="text-3xl font-extrabold tracking-tight text-white mb-4">
+          <img src="/logo-light.png" alt="" className="h-32 w-auto mx-auto mb-8" />
+          <h2 className="text-3xl font-extrabold tracking-tight mb-4">
             Financial clarity<br />for every mile.
           </h2>
-          <p className="text-white/60 max-w-sm mx-auto">
+          <p className="text-muted-foreground max-w-sm mx-auto">
             Payroll, settlements, and bookkeeping — unified in one platform built for trucking operations.
           </p>
         </div>
