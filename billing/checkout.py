@@ -17,7 +17,7 @@ from typing import Any, Dict, Optional, Tuple
 from flask import Blueprint, jsonify, redirect, request
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
 
-from billing.customers import get_or_create_company_customer
+from billing.customers import get_company_customer, get_or_create_company_customer
 
 billing_bp = Blueprint("billing", __name__, url_prefix="/billing")
 
@@ -191,6 +191,98 @@ def _resolve_company_customer_id(
 @billing_bp.get("/health")
 def billing_health():
     return jsonify({"status": "ok"}), 200
+
+
+def _plan_key_for_price(price_id: str) -> Optional[str]:
+    if not price_id:
+        return None
+    pricing = _pricing_from_env()
+    for key, cfg in pricing.items():
+        if price_id in {cfg.get("base_price_id"), cfg.get("per_employee_price_id")}:
+            return key
+    return None
+
+
+@billing_bp.get("/status")
+def billing_status():
+    """
+    GET /billing/status
+
+    Returns the company's current subscription state so the app's Billing
+    page can show the active plan (or none).
+
+    Output:
+      {
+        "status": "active|trialing|past_due|canceled|none",
+        "plan": "combo|payroll_only|bookkeeping_only|null",
+        "current_period_end": "ISO8601|null",
+        "cancel_at_period_end": bool,
+        "stripe_customer_id": "cus_...|null"
+      }
+    """
+    try:
+        company_id = _require_company_id({})
+    except Exception as e:
+        return _json_error("invalid_request", 400, detail=str(e))
+
+    none_payload = {
+        "status": "none",
+        "plan": None,
+        "current_period_end": None,
+        "cancel_at_period_end": False,
+        "stripe_customer_id": None,
+    }
+
+    try:
+        rec = get_company_customer(company_id)
+    except Exception:
+        rec = None
+    customer_id = (rec or {}).get("stripe_customer_id")
+    if not customer_id:
+        return jsonify(none_payload), 200
+
+    none_payload["stripe_customer_id"] = customer_id
+
+    try:
+        stripe = _stripe_client()
+        subs = stripe.Subscription.list(
+            customer=customer_id,
+            status="all",
+            limit=10,
+        )
+        items = subs.get("data") or []
+        # Prefer a live subscription over historical/canceled ones
+        rank = {"active": 0, "trialing": 1, "past_due": 2, "unpaid": 3, "canceled": 4}
+        items.sort(key=lambda s: rank.get(s.get("status"), 9))
+        if not items:
+            return jsonify(none_payload), 200
+
+        sub = items[0]
+        plan_key = None
+        for li in (sub.get("items", {}).get("data") or []):
+            plan_key = _plan_key_for_price((li.get("price") or {}).get("id") or "")
+            if plan_key:
+                break
+
+        period_end = sub.get("current_period_end")
+        from datetime import datetime, timezone
+        period_end_iso = (
+            datetime.fromtimestamp(int(period_end), tz=timezone.utc).isoformat()
+            if period_end
+            else None
+        )
+
+        return jsonify(
+            {
+                "status": sub.get("status") or "none",
+                "plan": plan_key,
+                "current_period_end": period_end_iso,
+                "cancel_at_period_end": bool(sub.get("cancel_at_period_end")),
+                "stripe_customer_id": customer_id,
+            }
+        ), 200
+    except Exception as e:
+        return _json_error("billing_status_failed", 500, detail=str(e))
 
 
 # ============================================================

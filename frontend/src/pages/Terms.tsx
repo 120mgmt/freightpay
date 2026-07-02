@@ -2,25 +2,25 @@ import { Link } from "react-router-dom";
 
 const Section = ({ title, children }: { title: string; children: React.ReactNode }) => (
   <div className="mb-8">
-    <h2 className="text-lg font-semibold text-white mb-3">{title}</h2>
+    <h2 className="text-lg font-bold mb-3">{title}</h2>
     <div className="text-muted-foreground leading-relaxed space-y-3 text-sm">{children}</div>
   </div>
 );
 
 const Terms = () => (
   <div className="min-h-screen bg-background text-foreground">
-    <header className="h-[72px] flex items-center border-b border-border px-6" style={{ background: "rgba(8,13,17,0.7)", backdropFilter: "blur(24px)" }}>
+    <header className="h-[80px] flex items-center border-b border-border px-6 bg-surface/85 backdrop-blur-md">
       <Link to="/">
-        <img src="/Logo.png" alt="LedgerHaul" className="h-16 w-auto" />
+        <img src="/logo-light.png" alt="LedgerHaul" className="h-16 w-auto" />
       </Link>
       <nav className="ml-auto flex gap-4 text-sm text-muted-foreground">
-        <Link to="/privacy" className="hover:text-white transition-colors">Privacy</Link>
-        <Link to="/signin" className="hover:text-white transition-colors">Sign in</Link>
+        <Link to="/privacy" className="hover:text-foreground transition-colors">Privacy</Link>
+        <Link to="/signin" className="hover:text-foreground transition-colors">Sign in</Link>
       </nav>
     </header>
 
     <main className="max-w-3xl mx-auto px-6 py-16">
-      <h1 className="text-3xl font-semibold text-white mb-2">Terms of Service</h1>
+      <h1 className="text-3xl font-extrabold tracking-tight mb-2">Terms of Service</h1>
       <p className="text-muted-foreground text-sm mb-10">Last updated: June 30, 2026</p>
 
       <Section title="1. Acceptance of Terms">
@@ -44,7 +44,7 @@ const Terms = () => (
       </Section>
 
       <Section title="6. Data and Privacy">
-        <p>Your use of the Service is subject to our <Link to="/privacy" className="underline hover:text-white">Privacy Policy</Link>. You retain ownership of your data. We process it only to provide the Service.</p>
+        <p>Your use of the Service is subject to our <Link to="/privacy" className="underline hover:text-foreground">Privacy Policy</Link>. You retain ownership of your data. We process it only to provide the Service.</p>
       </Section>
 
       <Section title="7. Limitation of Liability">
@@ -60,14 +60,14 @@ const Terms = () => (
       </Section>
 
       <Section title="10. Contact">
-        <p>For questions about these Terms, contact us at <a href="mailto:legal@ledgerhaul.com" className="underline hover:text-white">legal@ledgerhaul.com</a>.</p>
+        <p>For questions about these Terms, contact us at <a href="mailto:legal@ledgerhaul.com" className="underline hover:text-foreground">legal@ledgerhaul.com</a>.</p>
       </Section>
     </main>
 
     <footer className="border-t border-border py-8 text-center text-xs text-muted-foreground">
       © {new Date().getFullYear()} LedgerHaul, Inc. ·{" "}
-      <Link to="/privacy" className="hover:text-white underline">Privacy</Link> ·{" "}
-      <Link to="/terms" className="hover:text-white underline">Terms</Link>
+      <Link to="/privacy" className="hover:text-foreground underline">Privacy</Link> ·{" "}
+      <Link to="/terms" className="hover:text-foreground underline">Terms</Link>
     </footer>
   </div>
 );

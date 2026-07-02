@@ -8,19 +8,20 @@ interface Account {
   id: number;
   account_code: string;
   name: string;
-  type: string;
+  account_type: string;
   normal_balance: string;
   is_active: boolean;
+  is_system?: boolean;
   [key: string]: unknown;
 }
 
 const TYPE_ORDER = ["asset", "liability", "equity", "revenue", "expense"];
-const TYPE_COLOR: Record<string, string> = {
-  asset:     "rgb(96,165,250)",
-  liability: "rgb(248,113,113)",
-  equity:    "rgb(167,139,250)",
-  revenue:   "rgb(54,211,148)",
-  expense:   "rgb(251,191,36)",
+const TYPE_TEXT: Record<string, string> = {
+  asset:     "text-blue-600",
+  liability: "text-red-600",
+  equity:    "text-violet-600",
+  revenue:   "text-primary",
+  expense:   "text-amber-600",
 };
 
 const Bookkeeping = () => {
@@ -35,11 +36,15 @@ const Bookkeeping = () => {
     setError("");
     try {
       const res = await apiFetch("/coa/accounts");
-      if (!res.ok) { setError("Failed to load chart of accounts."); setLoading(false); return; }
-      const data = await res.json();
-      setAccounts(data.accounts || data.data || []);
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        setError(data?.error || "Failed to load chart of accounts.");
+        setLoading(false);
+        return;
+      }
+      setAccounts(Array.isArray(data) ? data : data?.accounts || []);
     } catch {
-      setError("Network error.");
+      setError("Network error — check your connection.");
     }
     setLoading(false);
   };
@@ -49,24 +54,25 @@ const Bookkeeping = () => {
   const handleSeed = async () => {
     setSeeding(true);
     setMsg("");
+    setError("");
     try {
       const res = await apiFetch("/coa/seed", { method: "POST" });
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setMsg("Default chart of accounts created.");
+        setMsg("Default trucking chart of accounts created.");
         await load();
       } else {
-        setError(data.error || "Seed failed.");
+        setError(data.detail || data.error || "Seed failed.");
       }
     } catch {
-      setError("Network error.");
+      setError("Network error — check your connection.");
     }
     setSeeding(false);
   };
 
   const grouped = TYPE_ORDER.map((type) => ({
     type,
-    items: accounts.filter((a) => a.type === type),
+    items: accounts.filter((a) => a.account_type === type),
   })).filter((g) => g.items.length > 0);
 
   return (
@@ -74,14 +80,14 @@ const Bookkeeping = () => {
       <div className="max-w-5xl">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-2xl font-semibold text-white">Chart of Accounts</h1>
-            <p className="text-muted-foreground mt-1">Your company's account structure</p>
+            <h1 className="text-2xl font-extrabold tracking-tight">Chart of Accounts</h1>
+            <p className="text-muted-foreground mt-1">The account structure behind your books</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={load}><RefreshCw size={14} className="mr-1" /> Refresh</Button>
-            {accounts.length === 0 && (
+            {accounts.length === 0 && !loading && (
               <Button size="sm" onClick={handleSeed} disabled={seeding}
-                style={{ background: "rgb(54,211,148)", color: "rgb(14,20,27)" }}>
+                className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
                 {seeding ? <Loader2 size={14} className="animate-spin mr-1" /> : <Layers size={14} className="mr-1" />}
                 Seed Default Accounts
               </Button>
@@ -90,12 +96,12 @@ const Bookkeeping = () => {
         </div>
 
         {msg && (
-          <div className="p-3 rounded-xl text-sm mb-4" style={{ background: "rgba(54,211,148,0.1)", border: "1px solid rgba(54,211,148,0.3)", color: "rgb(54,211,148)" }}>
+          <div className="p-3 rounded-xl text-sm mb-4 border border-primary/30 bg-primary/5 text-primary">
             {msg}
           </div>
         )}
         {error && (
-          <div className="p-3 rounded-xl text-sm mb-4" style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", color: "rgb(248,113,113)" }}>
+          <div className="p-3 rounded-xl text-sm mb-4 border border-destructive/30 bg-destructive/5 text-destructive">
             {error}
           </div>
         )}
@@ -107,9 +113,12 @@ const Bookkeeping = () => {
         )}
 
         {!loading && accounts.length === 0 && !error && (
-          <div className="text-center py-20 border border-dashed border-border rounded-xl">
-            <p className="text-muted-foreground mb-4">No accounts yet. Seed the default trucking chart of accounts to get started.</p>
-            <Button onClick={handleSeed} disabled={seeding} style={{ background: "rgb(54,211,148)", color: "rgb(14,20,27)" }}>
+          <div className="text-center py-20 border border-dashed border-border rounded-2xl bg-surface-muted/50">
+            <p className="text-muted-foreground mb-4">
+              No accounts yet. Seed the default trucking chart of accounts to get started.
+            </p>
+            <Button onClick={handleSeed} disabled={seeding}
+              className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
               {seeding ? <Loader2 size={14} className="animate-spin mr-1" /> : <Layers size={14} className="mr-1" />}
               Seed Default Accounts
             </Button>
@@ -118,34 +127,35 @@ const Bookkeeping = () => {
 
         {!loading && grouped.map(({ type, items }) => (
           <div key={type} className="mb-6">
-            <h2 className="text-xs font-semibold uppercase tracking-widest mb-2 px-1" style={{ color: TYPE_COLOR[type] || "rgb(156,163,175)" }}>
-              {type}s ({items.length})
+            <h2 className={`text-xs font-bold uppercase tracking-widest mb-2 px-1 ${TYPE_TEXT[type] || "text-muted-foreground"}`}>
+              {type === "equity" ? "Equity" : `${type}s`} ({items.length})
             </h2>
-            <div className="rounded-xl border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr style={{ background: "rgba(19,27,37,0.8)", borderBottom: "1px solid var(--border)" }}>
-                    {["Code", "Name", "Normal Balance", "Status"].map((h) => (
-                      <th key={h} className="text-left px-4 py-2.5 text-xs text-muted-foreground font-medium uppercase tracking-wider">{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((a, i) => (
-                    <tr key={a.id} style={{ background: i % 2 === 0 ? "rgba(19,27,37,0.4)" : "rgba(14,20,27,0.4)", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
-                      <td className="px-4 py-2.5 font-mono text-xs" style={{ color: TYPE_COLOR[type] || "white" }}>{a.account_code}</td>
-                      <td className="px-4 py-2.5 text-white">{a.name}</td>
-                      <td className="px-4 py-2.5 text-muted-foreground capitalize">{a.normal_balance}</td>
-                      <td className="px-4 py-2.5">
-                        <span className="px-2 py-0.5 rounded text-xs font-medium"
-                          style={{ background: a.is_active ? "rgba(54,211,148,0.15)" : "rgba(156,163,175,0.1)", color: a.is_active ? "rgb(54,211,148)" : "rgb(156,163,175)" }}>
-                          {a.is_active ? "Active" : "Inactive"}
-                        </span>
-                      </td>
+            <div className="rounded-2xl border border-border overflow-hidden bg-card shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-surface-muted border-b border-border">
+                      {["Code", "Name", "Normal Balance", "Status"].map((h) => (
+                        <th key={h} className="text-left px-4 py-2.5 text-xs text-muted-foreground font-semibold uppercase tracking-wider">{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {items.map((a) => (
+                      <tr key={a.id} className="border-b border-border/60 last:border-0 hover:bg-surface-muted/50 transition-colors">
+                        <td className={`px-4 py-2.5 font-mono text-xs font-semibold ${TYPE_TEXT[type] || ""}`}>{a.account_code}</td>
+                        <td className="px-4 py-2.5">{a.name}</td>
+                        <td className="px-4 py-2.5 text-muted-foreground capitalize">{a.normal_balance}</td>
+                        <td className="px-4 py-2.5">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${a.is_active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                            {a.is_active ? "Active" : "Inactive"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         ))}

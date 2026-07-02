@@ -78,7 +78,7 @@ export const Closing = () => {
         <div className="max-w-7xl mx-auto px-6 py-14">
           <div className="grid md:grid-cols-6 gap-10">
             <div className="md:col-span-2">
-              <img src="/Logo.png" alt="LedgerHaul" className="h-16 w-auto -ml-3" />
+              <img src="/Logo.png" alt="LedgerHaul" className="h-28 w-auto -ml-4" />
               <p className="mt-3 text-sm text-white/60 leading-relaxed max-w-xs">
                 Payroll, driver settlements, and bookkeeping for US trucking
                 carriers.

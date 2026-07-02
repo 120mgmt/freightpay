@@ -157,6 +157,8 @@ if cors_origins_raw:
     ]
 else:
     allowed_origins = [BASE_URL]
+    if BASE_URL.startswith("https://") and "://www." not in BASE_URL:
+        allowed_origins.append(BASE_URL.replace("https://", "https://www.", 1))
 
 # Always allow Vercel preview URLs (pattern match)
 _VERCEL_RE = re.compile(r"^https://[a-z0-9-]+-[a-z0-9]+-projects\.vercel\.app$")

@@ -4,76 +4,75 @@
 @tailwind components;
 @tailwind utilities;
 
-/* LedgerHaul Design System — Dark mint SaaS */
+/* LedgerHaul Design System — light paper surface, ink text, brand emerald.
+   The whole product (marketing site + app) shares the homepage theme. */
 
 @layer base {
   :root {
-    /* Core surfaces */
-    --background: 210 35% 5%;          /* #0B0F14 near-black */
-    --foreground: 213 28% 78%;         /* #B8C6D9 slate */
+    /* Core surfaces — homepage light theme */
+    --background: 45 18% 98%;          /* paper */
+    --foreground: 200 35% 11%;         /* ink */
 
-    --surface: 213 33% 11%;            /* #121A24 deep navy card */
-    --surface-elevated: 213 30% 14%;
-    --surface-muted: 213 25% 9%;
+    --surface: 0 0% 100%;
+    --surface-elevated: 0 0% 100%;
+    --surface-muted: 45 14% 95%;
 
-    --card: 213 33% 11%;
-    --card-foreground: 0 0% 98%;
+    --card: 0 0% 100%;
+    --card-foreground: 200 35% 11%;
 
-    --popover: 213 33% 11%;
-    --popover-foreground: 0 0% 98%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 200 35% 11%;
 
-    /* Mint primary */
-    --primary: 156 64% 52%;            /* #38D39F */
-    --primary-foreground: 213 33% 8%;
-    --primary-glow: 156 80% 60%;
-    --primary-dim: 156 50% 35%;
+    /* Brand emerald */
+    --primary: 161 62% 30%;            /* deep emerald, AA on white */
+    --primary-foreground: 0 0% 100%;
+    --primary-glow: 160 73% 43%;       /* brand mint from the logo */
+    --primary-dim: 161 40% 24%;
 
-    --secondary: 213 33% 14%;
-    --secondary-foreground: 0 0% 98%;
+    --secondary: 45 14% 94%;
+    --secondary-foreground: 200 35% 11%;
 
-    --muted: 213 25% 13%;
-    --muted-foreground: 213 18% 58%;
+    --muted: 45 14% 94%;
+    --muted-foreground: 202 14% 38%;
 
-    --accent: 156 64% 52%;
-    --accent-foreground: 213 33% 8%;
+    --accent: 161 62% 30%;
+    --accent-foreground: 0 0% 100%;
 
-    --destructive: 0 75% 62%;
-    --destructive-foreground: 0 0% 98%;
+    --destructive: 0 72% 45%;
+    --destructive-foreground: 0 0% 100%;
 
-    --border: 213 25% 17%;
-    --input: 213 25% 15%;
-    --ring: 156 64% 52%;
+    --border: 200 14% 88%;
+    --input: 200 14% 86%;
+    --ring: 161 62% 30%;
 
     --radius: 0.75rem;
 
+    /* Single dark color block (closing CTA + footer + accents) */
+    --ink: 192 30% 8%;
+    --ink-soft: 192 22% 14%;
+
     /* Gradients */
-    --gradient-primary: linear-gradient(135deg, hsl(156 64% 52%), hsl(165 70% 45%));
-    --gradient-radial: radial-gradient(ellipse at top, hsl(156 64% 52% / 0.15), transparent 60%);
-    --gradient-surface: linear-gradient(180deg, hsl(213 33% 11%), hsl(213 35% 7%));
-    --gradient-mesh: radial-gradient(at 20% 20%, hsl(156 64% 52% / 0.12) 0px, transparent 50%),
-                     radial-gradient(at 80% 0%, hsl(180 60% 40% / 0.08) 0px, transparent 50%),
-                     radial-gradient(at 0% 80%, hsl(156 80% 60% / 0.06) 0px, transparent 50%);
+    --gradient-primary: linear-gradient(135deg, hsl(161 62% 30%), hsl(160 73% 43%));
+    --gradient-radial: radial-gradient(ellipse at top, hsl(160 73% 43% / 0.12), transparent 60%);
+    --gradient-surface: linear-gradient(180deg, hsl(0 0% 100%), hsl(45 14% 96%));
+    --gradient-mesh: radial-gradient(at 20% 20%, hsl(160 73% 43% / 0.10) 0px, transparent 50%),
+                     radial-gradient(at 80% 0%, hsl(180 60% 40% / 0.06) 0px, transparent 50%),
+                     radial-gradient(at 0% 80%, hsl(160 73% 43% / 0.05) 0px, transparent 50%);
 
     /* Shadows */
-    --shadow-glow: 0 0 60px hsl(156 64% 52% / 0.25);
-    --shadow-card: 0 10px 40px -10px hsl(0 0% 0% / 0.5);
-    --shadow-elevated: 0 20px 60px -20px hsl(156 64% 52% / 0.2), 0 8px 24px -8px hsl(0 0% 0% / 0.5);
+    --shadow-glow: 0 0 60px hsl(160 73% 43% / 0.2);
+    --shadow-card: 0 10px 40px -14px hsl(200 35% 11% / 0.15);
+    --shadow-elevated: 0 20px 60px -24px hsl(200 35% 11% / 0.18);
 
-    /* Sidebar (kept) */
-    --sidebar-background: 213 33% 8%;
-    --sidebar-foreground: 213 28% 78%;
-    --sidebar-primary: 156 64% 52%;
-    --sidebar-primary-foreground: 213 33% 8%;
-    --sidebar-accent: 213 25% 13%;
-    --sidebar-accent-foreground: 0 0% 98%;
-    --sidebar-border: 213 25% 17%;
-    --sidebar-ring: 156 64% 52%;
-  }
-
-  .dark {
-    /* Same — site is dark-only */
-    --background: 210 35% 5%;
-    --foreground: 213 28% 78%;
+    /* Sidebar */
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 200 35% 11%;
+    --sidebar-primary: 161 62% 30%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 45 14% 94%;
+    --sidebar-accent-foreground: 200 35% 11%;
+    --sidebar-border: 200 14% 88%;
+    --sidebar-ring: 161 62% 30%;
   }
 }
 
@@ -82,10 +81,10 @@
   html { scroll-behavior: smooth; }
   body {
     @apply bg-background text-foreground antialiased;
-    font-family: 'Inter', system-ui, sans-serif;
+    font-family: 'Archivo Variable', 'Inter', system-ui, sans-serif;
     font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';
   }
-  ::selection { background: hsl(var(--primary) / 0.3); color: hsl(var(--foreground)); }
+  ::selection { background: hsl(161 62% 30% / 0.18); color: hsl(200 35% 11%); }
 }
 
 @layer utilities {
