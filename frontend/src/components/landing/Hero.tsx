@@ -6,7 +6,7 @@ export const Hero = () => {
   const navigate = useNavigate();
 
   return (
-    <section className="relative pt-16">
+    <section className="relative pt-20">
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid lg:grid-cols-12 gap-10 lg:gap-14 items-center pt-12 lg:pt-20 pb-16 lg:pb-24">
           {/* Copy */}
