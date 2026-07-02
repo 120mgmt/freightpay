@@ -43,7 +43,7 @@ export const Navbar = () => {
           }}
           aria-label="LedgerHaul home"
         >
-          <Wordmark />
+          <img src="/logo-light.png" alt="LedgerHaul" className="h-14 w-auto -my-2" />
         </a>
 
         <div className="hidden md:flex items-center gap-1">

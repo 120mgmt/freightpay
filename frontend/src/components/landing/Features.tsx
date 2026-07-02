@@ -11,7 +11,7 @@ const smallCells = [
   {
     icon: FileCheck,
     title: "Year-end in one click",
-    body: "1099-NEC and W-2 forms generate from the same records you ran payroll on all year.",
+    body: "1099-NEC forms generate from the same records you ran payroll on all year.",
   },
   {
     icon: History,

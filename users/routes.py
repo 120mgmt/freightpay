@@ -59,6 +59,14 @@ def login():
     if not bool(getattr(user, "email_verified", False)):
         return jsonify({"error": "EMAIL_NOT_VERIFIED"}), 403
 
+    # Clickwrap: the sign-in and registration pages display consent to the
+    # Terms of Service and Privacy Policy. Record acceptance for accounts
+    # created before acceptance was captured so the legal guard doesn't
+    # dead-end them on every API call.
+    if not (user.accepted_tos and user.accepted_privacy and user.accepted_refund):
+        user.mark_legal_accepted(tos=True, privacy=True, refund=True)
+        db.commit()
+
     token = login_user(user=user)
 
     return jsonify(
@@ -109,6 +117,9 @@ def register():
         email_verified=False,
     )
     user.set_password(password)
+
+    # Registration form displays clickwrap consent to Terms + Privacy.
+    user.mark_legal_accepted(tos=True, privacy=True, refund=True)
 
     db.add(user)
     db.commit()

@@ -1,14 +1,22 @@
 {
   "rewrites": [
-    { "source": "/users/:path*",          "destination": "https://ledgerhaul.com/users/:path*" },
-    { "source": "/verify/:path*",         "destination": "https://ledgerhaul.com/verify/:path*" },
-    { "source": "/api/:path*",            "destination": "https://ledgerhaul.com/api/:path*" },
-    { "source": "/payroll/:path*",        "destination": "https://ledgerhaul.com/payroll/:path*" },
-    { "source": "/coa/:path*",            "destination": "https://ledgerhaul.com/coa/:path*" },
-    { "source": "/reporting/:path*",      "destination": "https://ledgerhaul.com/reporting/:path*" },
-    { "source": "/billing/:path*",        "destination": "https://ledgerhaul.com/billing/:path*" },
-    { "source": "/reconciliation/:path*", "destination": "https://ledgerhaul.com/reconciliation/:path*" },
-    { "source": "/settlements/:path*",    "destination": "https://ledgerhaul.com/settlements/:path*" },
+    { "source": "/users/:path*",          "destination": "https://api.ledgerhaul.com/users/:path*" },
+    { "source": "/auth/:path*",           "destination": "https://api.ledgerhaul.com/auth/:path*" },
+    { "source": "/verify/:path*",         "destination": "https://api.ledgerhaul.com/verify/:path*" },
+    { "source": "/api/:path*",            "destination": "https://api.ledgerhaul.com/api/:path*" },
+    { "source": "/payroll/:path*",        "destination": "https://api.ledgerhaul.com/payroll/:path*" },
+    { "source": "/coa/:path*",            "destination": "https://api.ledgerhaul.com/coa/:path*" },
+    { "source": "/reporting/:path*",      "destination": "https://api.ledgerhaul.com/reporting/:path*" },
+    { "source": "/billing/:path*",        "destination": "https://api.ledgerhaul.com/billing/:path*" },
+    { "source": "/reconciliation/:path*", "destination": "https://api.ledgerhaul.com/reconciliation/:path*" },
+    { "source": "/companies/:path*",      "destination": "https://api.ledgerhaul.com/companies/:path*" },
+    { "source": "/compliance/:path*",     "destination": "https://api.ledgerhaul.com/compliance/:path*" },
+    { "source": "/legal/:path*",          "destination": "https://api.ledgerhaul.com/legal/:path*" },
+    { "source": "/pricing/:path*",        "destination": "https://api.ledgerhaul.com/pricing/:path*" },
+    { "source": "/files/:path*",          "destination": "https://api.ledgerhaul.com/files/:path*" },
+    { "source": "/tax/:path*",            "destination": "https://api.ledgerhaul.com/tax/:path*" },
+    { "source": "/bank/:path*",           "destination": "https://api.ledgerhaul.com/bank/:path*" },
+    { "source": "/demo/:path*",           "destination": "https://api.ledgerhaul.com/demo/:path*" },
     { "source": "/(.*)",                  "destination": "/index.html" }
   ]
 }

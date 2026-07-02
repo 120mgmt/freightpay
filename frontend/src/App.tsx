@@ -9,7 +9,6 @@ import Index from "./pages/Index.tsx";
 import SignIn from "./pages/SignIn.tsx";
 import Register from "./pages/Register.tsx";
 import Dashboard from "./pages/Dashboard.tsx";
-import ApiDocs from "./pages/ApiDocs.tsx";
 import NotFound from "./pages/NotFound.tsx";
 import VerifyEmail from "./pages/VerifyEmail.tsx";
 import ForgotPassword from "./pages/ForgotPassword.tsx";
@@ -39,7 +38,6 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/register" element={<Register />} />
-            <Route path="/docs" element={<ApiDocs />} />
             <Route path="/verify-email" element={<VerifyEmail />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />

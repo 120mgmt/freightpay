@@ -5,13 +5,13 @@ import { Reveal } from "./Reveal";
 const plans = [
   {
     name: "Payroll Only",
-    price: "$189",
-    per: "/mo + $7 per driver",
+    price: "$29",
+    per: "/mo + $5 per driver",
     desc: "Settlements, payouts, and tax forms without the bookkeeping module.",
     features: [
       "Driver and contractor settlements",
       "Direct deposit payouts",
-      "1099-NEC and W-2 generation",
+      "1099-NEC generation",
       "Driver statement portal",
       "Email and chat support",
     ],
@@ -19,8 +19,8 @@ const plans = [
   },
   {
     name: "Combo",
-    price: "$249",
-    per: "/mo + $9 per worker",
+    price: "$49",
+    per: "/mo + $5 per driver",
     desc: "Payroll and bookkeeping in one ledger. The full stack for growing carriers.",
     features: [
       "Everything in Payroll and Bookkeeping",
@@ -33,7 +33,7 @@ const plans = [
   },
   {
     name: "Bookkeeping Only",
-    price: "$149",
+    price: "$25",
     per: "/mo flat",
     desc: "Flat-rate double-entry bookkeeping for owner-operators and small fleets.",
     features: [
