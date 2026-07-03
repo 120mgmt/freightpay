@@ -11,7 +11,7 @@ const Privacy = () => (
   <div className="min-h-screen bg-background text-foreground">
     <header className="h-[80px] flex items-center border-b border-border px-6 bg-surface/85 backdrop-blur-md">
       <Link to="/">
-        <img src="/logo-light.png" alt="LedgerHaul" className="h-16 w-auto" />
+        <img src="/logo-light.png" alt="LedgerHaul" className="h-12 w-auto" />
       </Link>
       <nav className="ml-auto flex gap-4 text-sm text-muted-foreground">
         <Link to="/terms" className="hover:text-foreground transition-colors">Terms</Link>

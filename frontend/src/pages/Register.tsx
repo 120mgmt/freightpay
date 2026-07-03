@@ -53,7 +53,7 @@ const Register = () => {
     return (
       <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
         <div className="w-full max-w-md text-center">
-          <img src="/logo-light.png" alt="LedgerHaul" className="h-20 w-auto mx-auto mb-6" />
+          <img src="/logo-light.png" alt="LedgerHaul" className="h-14 w-auto mx-auto mb-6" />
           <div className="mx-auto mb-6 h-16 w-16 rounded-full flex items-center justify-center bg-primary/10 border border-primary/30">
             <CheckCircle2 size={32} className="text-primary" />
           </div>
@@ -79,7 +79,7 @@ const Register = () => {
       <div className="hidden lg:flex flex-1 items-center justify-center relative overflow-hidden bg-surface-muted border-r border-border">
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full blur-[100px] bg-[hsl(var(--primary-glow)/0.15)]" />
         <div className="relative text-center px-12">
-          <img src="/logo-light.png" alt="" className="h-32 w-auto mx-auto mb-8" />
+          <img src="/logo-light.png" alt="" className="h-24 w-auto mx-auto mb-8" />
           <h2 className="text-3xl font-extrabold tracking-tight mb-4">
             Get started in<br />under 5 minutes.
           </h2>
@@ -93,7 +93,7 @@ const Register = () => {
       <div className="flex-1 flex items-center justify-center px-6 py-10">
         <div className="w-full max-w-md">
           <Link to="/" className="inline-block mb-8">
-            <img src="/logo-light.png" alt="LedgerHaul" className="h-24 w-auto -ml-2" />
+            <img src="/logo-light.png" alt="LedgerHaul" className="h-14 w-auto" />
           </Link>
 
           <h1 className="text-3xl font-extrabold tracking-tight mb-2">Create your account</h1>

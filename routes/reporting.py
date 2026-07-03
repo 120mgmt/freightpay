@@ -21,7 +21,7 @@ def _require_company_id() -> int:
     cid = (
         request.headers.get("X-Company-Id")
         or request.args.get("company_id")
-        or (request.json or {}).get("company_id")
+        or (request.get_json(silent=True) or {}).get("company_id")
     )
     if cid is None or str(cid).strip() == "":
         raise ValueError("Missing company_id")
@@ -32,7 +32,7 @@ def _require_company_id() -> int:
 
 
 def _require_period_range() -> tuple[str, str]:
-    data = request.json or {}
+    data = request.get_json(silent=True) or {}
     period_from = (data.get("period_from") or request.args.get("period_from") or "").strip()
     period_to = (data.get("period_to") or request.args.get("period_to") or "").strip()
 
