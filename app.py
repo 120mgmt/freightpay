@@ -160,19 +160,14 @@ else:
     if BASE_URL.startswith("https://") and "://www." not in BASE_URL:
         allowed_origins.append(BASE_URL.replace("https://", "https://www.", 1))
 
-# Always allow Vercel preview URLs (pattern match)
+# Always allow Vercel preview URLs (pattern match).
+# NOTE: flask-cors accepts strings and compiled regex patterns in the
+# origins list — a callable is NOT supported and crashes every request.
 _VERCEL_RE = re.compile(r"^https://[a-z0-9-]+-[a-z0-9]+-projects\.vercel\.app$")
-
-def _origin_allowed(origin: str) -> bool:
-    if origin in allowed_origins:
-        return True
-    if _VERCEL_RE.match(origin):
-        return True
-    return False
 
 CORS(
     app,
-    resources={r"/*": {"origins": _origin_allowed}},
+    resources={r"/*": {"origins": [*allowed_origins, _VERCEL_RE]}},
     supports_credentials=True,
 )
 

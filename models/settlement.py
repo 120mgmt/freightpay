@@ -94,7 +94,6 @@ class Settlement(Base):
     )
 
     # Relationships
-    payroll_run = relationship("PayrollRun", backref="settlements")
     driver = relationship("Driver", backref="settlements")
 
     __table_args__ = (

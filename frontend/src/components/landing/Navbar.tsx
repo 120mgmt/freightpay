@@ -31,7 +31,7 @@ export const Navbar = () => {
   };
 
   return (
-    <header className="fixed top-0 inset-x-0 z-40 h-16 flex items-center border-b border-border bg-[hsl(var(--background)/0.88)] backdrop-blur-md">
+    <header className="fixed top-0 inset-x-0 z-40 h-20 flex items-center border-b border-border bg-[hsl(var(--background)/0.88)] backdrop-blur-md">
       <nav className="w-full max-w-7xl mx-auto flex items-center justify-between px-6">
         <a
           href="/"
@@ -43,7 +43,7 @@ export const Navbar = () => {
           }}
           aria-label="LedgerHaul home"
         >
-          <img src="/logo-light.png" alt="LedgerHaul" className="h-14 w-auto -my-2" />
+          <img src="/logo-light.png" alt="LedgerHaul" className="h-[4.5rem] w-auto -my-2 -ml-3" />
         </a>
 
         <div className="hidden md:flex items-center gap-1">
@@ -104,7 +104,7 @@ export const Navbar = () => {
       </nav>
 
       {open && (
-        <div className="md:hidden absolute top-16 inset-x-0 border-b border-border bg-[hsl(var(--background)/0.97)] backdrop-blur-xl">
+        <div className="md:hidden absolute top-20 inset-x-0 border-b border-border bg-[hsl(var(--background)/0.97)] backdrop-blur-xl">
           <div className="px-6 py-4 flex flex-col gap-1">
             {links.map((l) => (
               <button

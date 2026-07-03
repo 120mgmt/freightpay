@@ -42,6 +42,10 @@ def init_jwt(app) -> JWTManager:
     )
 
     app.config["JWT_SECRET_KEY"] = secret
+    # The app uses a dict identity ({user_id, company_id, role, email}).
+    # PyJWT >= 2.10 rejects tokens whose "sub" claim is not a string, so we
+    # store the identity under a custom claim instead of "sub".
+    app.config["JWT_IDENTITY_CLAIM"] = "identity"
     app.config["JWT_TOKEN_LOCATION"] = ["headers"]
     app.config["JWT_HEADER_NAME"] = "Authorization"
     app.config["JWT_HEADER_TYPE"] = "Bearer"

@@ -3,6 +3,9 @@
 Revision ID: 20260401_payroll_runs
 Revises: 20260323_contractors_and_ledger_entries
 Create Date: 2026-04-01
+
+Idempotent: skips creation when the table already exists (the follow-up
+revision 20260403_payroll_runs_v2 reconciles the schema either way).
 """
 
 from alembic import op
@@ -15,6 +18,10 @@ depends_on = None
 
 
 def upgrade():
+    insp = sa.inspect(op.get_bind())
+    if "payroll_runs" in insp.get_table_names():
+        return
+
     op.create_table(
         "payroll_runs",
         sa.Column("run_id", sa.Text(), nullable=False),

@@ -79,8 +79,6 @@ class Receipt(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False)
 
     # Relationships
-    company = relationship("Company", backref="receipts")
-    journal = relationship("Journal", backref="receipts")
     items = relationship(
         "ReceiptItem",
         back_populates="receipt",
