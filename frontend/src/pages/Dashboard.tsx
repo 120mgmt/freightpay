@@ -9,20 +9,14 @@ import {
 } from "lucide-react";
 
 interface RunSummary {
-  id: number;
+  run_id: string;
   status?: string;
-  pay_date?: string;
-  gross_total?: string;
-  net_total?: string;
-  payload?: { contractors?: unknown[] } | null;
+  created_at?: string;
+  finalized?: boolean;
 }
 
-const money = (v: unknown) => {
-  const n = Number(v);
-  return isNaN(n)
-    ? "—"
-    : new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(n);
-};
+const fmtDate = (s?: string) =>
+  s ? new Date(s).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "—";
 
 const quickActions = [
   { label: "Add Contractors",   desc: "Onboard the drivers and contractors you pay",   icon: Users,      to: "/settlements" },
@@ -66,13 +60,13 @@ const Dashboard = () => {
   }, []);
 
   const lastRun = runs[0];
-  const ytdNet = runs.reduce((sum, r) => sum + (Number(r.net_total) || 0), 0);
+  const finalizedCount = runs.filter((r) => r.finalized).length;
 
   const stats = [
     { label: "Active Contractors", value: contractorCount ?? "—", sub: "on your roster", icon: Users },
     { label: "Payroll Runs", value: runs.length, sub: "all time", icon: CreditCard },
-    { label: "Last Run Net", value: lastRun ? money(lastRun.net_total) : "—", sub: lastRun?.status ? `status: ${lastRun.status}` : "no runs yet", icon: DollarSign },
-    { label: "Total Net Paid", value: money(ytdNet), sub: "across all runs", icon: TrendingUp },
+    { label: "Last Run", value: lastRun ? fmtDate(lastRun.created_at) : "—", sub: lastRun?.status ? `status: ${lastRun.status}` : "no runs yet", icon: DollarSign },
+    { label: "Finalized Runs", value: finalizedCount, sub: `of ${runs.length} total`, icon: TrendingUp },
   ];
 
   return (
