@@ -270,6 +270,30 @@ def _subscription_guard():
 init_db(app)
 migrate = Migrate(app, db)
 
+# Apply migrations at boot (idempotent) so the schema is always current even
+# when the platform start command doesn't run "flask db upgrade". Failures are
+# logged, not fatal — a schema warning must not take the whole API down.
+if (os.getenv("RUN_MIGRATIONS_ON_BOOT") or "1").strip().lower() in {"1", "true", "yes"}:
+    from flask_migrate import upgrade as _db_upgrade
+
+    try:
+        with app.app_context():
+            _db_upgrade()
+        logger.info("DB migrations applied at boot")
+    except Exception as _mig_err:
+        logger.error("DB migration at boot failed: %s", _mig_err)
+        # Self-heal a stale alembic_version (e.g. it references a renamed or
+        # deleted revision). All migrations are idempotent, so replaying the
+        # chain from base against an existing schema is safe.
+        try:
+            with app.app_context():
+                with db.engine.begin() as _conn:
+                    _conn.exec_driver_sql("DELETE FROM alembic_version")
+                _db_upgrade()
+            logger.info("DB migrations applied after resetting alembic_version")
+        except Exception as _mig_err2:
+            logger.error("DB migration retry failed (continuing): %s", _mig_err2)
+
 # =========================
 # REGISTER BLUEPRINTS
 # =========================

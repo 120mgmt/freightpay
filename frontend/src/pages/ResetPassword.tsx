@@ -65,7 +65,7 @@ const ResetPassword = () => {
     <div className="min-h-screen bg-background text-foreground flex items-center justify-center px-6">
       <div className="w-full max-w-md">
         <Link to="/" className="inline-block mb-10">
-          <img src="/logo-light.png" alt="LedgerHaul" className="h-24 w-auto -ml-2" />
+          <img src="/logo-light.png" alt="LedgerHaul" className="h-14 w-auto" />
         </Link>
 
         {done ? (

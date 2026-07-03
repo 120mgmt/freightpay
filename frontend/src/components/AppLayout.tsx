@@ -33,7 +33,7 @@ const AppLayout = ({ children, active }: AppLayoutProps) => {
       {/* Top bar */}
       <header className="h-[84px] flex items-center border-b border-border px-4 sm:px-6 bg-surface/85 backdrop-blur-md sticky top-0 z-30">
         <Link to="/dashboard" className="flex items-center shrink-0">
-          <img src="/logo-light.png" alt="LedgerHaul" className="h-16 sm:h-20 w-auto" />
+          <img src="/logo-light.png" alt="LedgerHaul" className="h-12 sm:h-14 w-auto" />
         </Link>
         <div className="ml-auto flex items-center gap-4">
           <div className="text-right hidden sm:block">

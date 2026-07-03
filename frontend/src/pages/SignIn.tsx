@@ -65,7 +65,7 @@ const SignIn = () => {
       <div className="flex-1 flex items-center justify-center px-6 py-10">
         <div className="w-full max-w-md">
           <Link to="/" className="inline-block mb-8">
-            <img src="/logo-light.png" alt="LedgerHaul" className="h-24 w-auto -ml-2" />
+            <img src="/logo-light.png" alt="LedgerHaul" className="h-14 w-auto" />
           </Link>
 
           <h1 className="text-3xl font-extrabold tracking-tight mb-2">Welcome back</h1>
@@ -173,7 +173,7 @@ const SignIn = () => {
       <div className="hidden lg:flex flex-1 items-center justify-center relative overflow-hidden bg-surface-muted border-l border-border">
         <div className="absolute top-1/3 left-1/2 -translate-x-1/2 w-[500px] h-[300px] rounded-full blur-[100px] bg-[hsl(var(--primary-glow)/0.15)]" />
         <div className="relative text-center px-12">
-          <img src="/logo-light.png" alt="" className="h-32 w-auto mx-auto mb-8" />
+          <img src="/logo-light.png" alt="" className="h-24 w-auto mx-auto mb-8" />
           <h2 className="text-3xl font-extrabold tracking-tight mb-4">
             Financial clarity<br />for every mile.
           </h2>
