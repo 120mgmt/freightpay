@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { apiFetch } from "@/lib/api";
 import { useAuth } from "@/contexts/AuthContext";
-import { Loader2, Save, KeyRound, User } from "lucide-react";
+import { Loader2, Save, KeyRound, User, Camera, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 const Settings = () => {
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
 
   const [profile, setProfile] = useState({
     first_name: user?.first_name || "",
@@ -18,6 +18,56 @@ const Settings = () => {
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileMsg, setProfileMsg] = useState("");
   const [profileErr, setProfileErr] = useState("");
+
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [avatarErr, setAvatarErr] = useState("");
+
+  const saveAvatar = async (dataUrl: string) => {
+    setAvatarSaving(true);
+    setAvatarErr("");
+    try {
+      const res = await apiFetch("/users/me", {
+        method: "PATCH",
+        body: JSON.stringify({ avatar_url: dataUrl }),
+      });
+      if (res.ok) {
+        updateUser({ avatar_url: dataUrl || null });
+      } else {
+        const d = await res.json().catch(() => ({}));
+        setAvatarErr(d.error === "AVATAR_TOO_LARGE" ? "Image too large — try a smaller photo." : d.error || "Could not save photo.");
+      }
+    } catch {
+      setAvatarErr("Network error — check your connection.");
+    }
+    setAvatarSaving(false);
+  };
+
+  const handleAvatarFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { setAvatarErr("Please choose an image file."); return; }
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const SIZE = 256;
+      const canvas = document.createElement("canvas");
+      canvas.width = SIZE;
+      canvas.height = SIZE;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { setAvatarErr("Could not process the image."); return; }
+      // cover-crop to a centered square
+      const side = Math.min(img.width, img.height);
+      const sx = (img.width - side) / 2;
+      const sy = (img.height - side) / 2;
+      ctx.drawImage(img, sx, sy, side, side, 0, 0, SIZE, SIZE);
+      saveAvatar(canvas.toDataURL("image/jpeg", 0.85));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); setAvatarErr("Could not read the image."); };
+    img.src = url;
+  };
 
   const [pw, setPw] = useState({ current: "", next: "", confirm: "" });
   const [pwSaving, setPwSaving] = useState(false);
@@ -88,6 +138,33 @@ const Settings = () => {
               {profileErr}
             </div>
           )}
+
+          <div className="flex items-center gap-4 mb-6">
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt="Profile" className="h-16 w-16 rounded-full object-cover border border-border" />
+            ) : (
+              <div className="h-16 w-16 rounded-full flex items-center justify-center text-lg font-bold bg-primary text-primary-foreground">
+                {user?.first_name?.[0]}{user?.last_name?.[0]}
+              </div>
+            )}
+            <div className="flex flex-col gap-1.5">
+              <div className="flex gap-2">
+                <Button type="button" size="sm" variant="outline" disabled={avatarSaving} onClick={() => fileRef.current?.click()}>
+                  {avatarSaving ? <Loader2 size={14} className="animate-spin mr-1" /> : <Camera size={14} className="mr-1" />}
+                  {user?.avatar_url ? "Change Photo" : "Upload Photo"}
+                </Button>
+                {user?.avatar_url && (
+                  <Button type="button" size="sm" variant="outline" disabled={avatarSaving} onClick={() => saveAvatar("")}
+                    className="text-destructive border-destructive/30 hover:bg-destructive/5">
+                    <Trash2 size={14} className="mr-1" /> Remove
+                  </Button>
+                )}
+              </div>
+              <span className="text-xs text-muted-foreground">JPG or PNG. It will be cropped to a square.</span>
+              {avatarErr && <span className="text-xs text-destructive">{avatarErr}</span>}
+            </div>
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={handleAvatarFile} />
+          </div>
 
           <form onSubmit={handleProfile} className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
