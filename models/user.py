@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Text,
 )
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
@@ -47,6 +48,9 @@ class User(db.Model):
 
     # Email verification
     email_verified = Column(Boolean, nullable=False, default=False)
+
+    # Profile picture (small data-URL image, resized client-side)
+    avatar_url = Column(Text, nullable=True)
 
     # Legal acceptance
     accepted_tos = Column(Boolean, nullable=False, default=False)
@@ -110,6 +114,7 @@ class User(db.Model):
             "role": self.role,
             "is_active": bool(self.is_active),
             "email_verified": bool(self.email_verified),
+            "avatar_url": self.avatar_url,
             "accepted_tos": bool(self.accepted_tos),
             "accepted_privacy": bool(self.accepted_privacy),
             "accepted_refund": bool(self.accepted_refund),

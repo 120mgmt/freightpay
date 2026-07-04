@@ -79,6 +79,7 @@ def login():
                 "last_name": user.last_name,
                 "role": user.role,
                 "company_id": str(user.company_id),
+                "avatar_url": user.avatar_url,
             },
         }
     ), 200
@@ -170,6 +171,7 @@ def me():
             "role": user.role,
             "company_id": str(user.company_id),
             "is_active": user.is_active,
+            "avatar_url": user.avatar_url,
         }
     ), 200
 
@@ -186,6 +188,16 @@ def update_me():
         user.first_name = data["first_name"].strip()
     if "last_name" in data and data["last_name"].strip():
         user.last_name = data["last_name"].strip()
+    if "avatar_url" in data:
+        avatar = (data.get("avatar_url") or "").strip()
+        if avatar == "":
+            user.avatar_url = None
+        else:
+            if not avatar.startswith(("data:image/png;base64,", "data:image/jpeg;base64,", "data:image/webp;base64,")):
+                return jsonify({"error": "AVATAR_MUST_BE_IMAGE_DATA_URL"}), 400
+            if len(avatar) > 300_000:
+                return jsonify({"error": "AVATAR_TOO_LARGE"}), 400
+            user.avatar_url = avatar
     if "email" in data and data["email"].strip():
         new_email = data["email"].strip().lower()
         if new_email != user.email:

@@ -7,6 +7,7 @@ export interface User {
   last_name: string;
   role: string;
   company_id: string;
+  avatar_url?: string | null;
 }
 
 interface AuthContextType {
@@ -16,6 +17,7 @@ interface AuthContextType {
   isLoading: boolean;
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string; code?: string }>;
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>;
+  updateUser: (patch: Partial<User>) => void;
   logout: () => void;
 }
 
@@ -99,6 +101,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const updateUser = (patch: Partial<User>) => {
+    setUser((prev) => {
+      const next = prev ? { ...prev, ...patch } : prev;
+      if (next) localStorage.setItem("lh_user", JSON.stringify(next));
+      return next;
+    });
+  };
+
   const logout = () => {
     setToken(null);
     setUser(null);
@@ -107,7 +117,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ user, token, isAuthenticated: !!token, isLoading, login, register, updateUser, logout }}>
       {children}
     </AuthContext.Provider>
   );

@@ -42,9 +42,17 @@ const AppLayout = ({ children, active }: AppLayoutProps) => {
             </div>
             <div className="text-xs text-muted-foreground">{user?.email}</div>
           </div>
-          <div className="h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold bg-primary text-primary-foreground">
-            {user?.first_name?.[0]}{user?.last_name?.[0]}
-          </div>
+          {user?.avatar_url ? (
+            <img
+              src={user.avatar_url}
+              alt="Profile"
+              className="h-9 w-9 rounded-full object-cover border border-border"
+            />
+          ) : (
+            <div className="h-9 w-9 rounded-full flex items-center justify-center text-xs font-bold bg-primary text-primary-foreground">
+              {user?.first_name?.[0]}{user?.last_name?.[0]}
+            </div>
+          )}
           <button
             onClick={handleLogout}
             className="text-muted-foreground hover:text-foreground transition-colors"
