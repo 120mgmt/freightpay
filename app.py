@@ -274,14 +274,25 @@ migrate = Migrate(app, db)
 # when the platform start command doesn't run "flask db upgrade". Failures are
 # logged, not fatal — a schema warning must not take the whole API down.
 if (os.getenv("RUN_MIGRATIONS_ON_BOOT") or "1").strip().lower() in {"1", "true", "yes"}:
-    from flask_migrate import upgrade as _db_upgrade
+    # NOTE: flask_migrate.upgrade() is wrapped in @catch_errors, which calls
+    # sys.exit(1) on failure — that would kill the whole boot (and every
+    # platform deploy). We call the alembic command API directly, which
+    # raises normal exceptions, and additionally catch SystemExit.
+    def _run_db_upgrade() -> bool:
+        try:
+            from alembic import command as _alembic_command
 
-    try:
-        with app.app_context():
-            _db_upgrade()
+            with app.app_context():
+                _alembic_cfg = app.extensions["migrate"].migrate.get_config()
+                _alembic_command.upgrade(_alembic_cfg, "head")
+            return True
+        except (Exception, SystemExit) as _mig_err:
+            logger.error("DB migration attempt failed: %s", _mig_err)
+            return False
+
+    if _run_db_upgrade():
         logger.info("DB migrations applied at boot")
-    except Exception as _mig_err:
-        logger.error("DB migration at boot failed: %s", _mig_err)
+    else:
         # Self-heal a stale alembic_version (e.g. it references a renamed or
         # deleted revision). All migrations are idempotent, so replaying the
         # chain from base against an existing schema is safe.
@@ -289,10 +300,12 @@ if (os.getenv("RUN_MIGRATIONS_ON_BOOT") or "1").strip().lower() in {"1", "true",
             with app.app_context():
                 with db.engine.begin() as _conn:
                     _conn.exec_driver_sql("DELETE FROM alembic_version")
-                _db_upgrade()
+        except (Exception, SystemExit) as _reset_err:
+            logger.error("alembic_version reset failed (continuing): %s", _reset_err)
+        if _run_db_upgrade():
             logger.info("DB migrations applied after resetting alembic_version")
-        except Exception as _mig_err2:
-            logger.error("DB migration retry failed (continuing): %s", _mig_err2)
+        else:
+            logger.error("DB migration retry failed (continuing without migrations)")
 
 # =========================
 # REGISTER BLUEPRINTS
