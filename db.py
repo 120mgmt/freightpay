@@ -45,6 +45,11 @@ def init_db(app):
 
     if database_url.startswith("sqlite"):
         engine_options["connect_args"] = {"check_same_thread": False}
+    elif database_url.startswith("postgresql"):
+        # Fail fast instead of hanging the boot if the DB is unreachable —
+        # a hung connection would trip gunicorn's worker timeout and kill
+        # the whole deploy.
+        engine_options["connect_args"] = {"connect_timeout": 10}
 
     app.config["SQLALCHEMY_DATABASE_URI"] = database_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
