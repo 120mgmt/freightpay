@@ -9,7 +9,7 @@ services:
     env: python
     plan: starter
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app
+    startCommand: gunicorn --timeout 120 boot_server:app
     autoDeploy: true
     envVars:
       - key: PYTHON_VERSION
