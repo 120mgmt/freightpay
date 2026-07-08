@@ -172,6 +172,32 @@ CORS(
 )
 
 # =========================
+# JSON ERROR HANDLERS
+# (uncaught exceptions and 404s otherwise return Flask's default HTML
+#  page, which breaks every frontend fetch().json() call and shows as a
+#  generic "network error" no matter what actually went wrong)
+# =========================
+@app.errorhandler(404)
+def _not_found(_e):
+    return jsonify({"error": "not_found"}), 404
+
+
+@app.errorhandler(Exception)
+def _unhandled_exception(e):
+    from werkzeug.exceptions import HTTPException
+
+    if isinstance(e, HTTPException):
+        return jsonify({"error": e.name.lower().replace(" ", "_"), "message": e.description}), e.code
+
+    logger.exception("Unhandled exception")
+    detail = str(e) if APP_ENV != "production" else None
+    payload = {"error": "internal_server_error", "message": "Something went wrong. Please try again."}
+    if detail:
+        payload["detail"] = detail
+    return jsonify(payload), 500
+
+
+# =========================
 # SECURITY HEADERS
 # =========================
 @app.after_request
