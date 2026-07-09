@@ -300,42 +300,30 @@ def _subscription_guard():
 init_db(app)
 migrate = Migrate(app, db)
 
-# Apply migrations at boot (idempotent) so the schema is always current even
-# when the platform start command doesn't run "flask db upgrade". Failures are
-# logged, not fatal — a schema warning must not take the whole API down.
+# Apply migrations at boot so the schema is always current even when the
+# platform start command doesn't run "flask db upgrade". A single attempt
+# only — failures are logged, not fatal, and NEVER trigger an automatic
+# alembic_version reset. Earlier revisions in this chain (predating this
+# repo's idempotency conventions) are not all safe to replay against a
+# database that already has their effects applied; a reset-and-retry loop
+# here previously wiped alembic_version and got permanently stuck retrying
+# a migration that fails with "relation already exists" on every boot,
+# which is worse than doing nothing. If migrations are ever genuinely out
+# of sync, reconcile deliberately (see /__migrate_debug), not automatically.
 if (os.getenv("RUN_MIGRATIONS_ON_BOOT") or "1").strip().lower() in {"1", "true", "yes"}:
-    # NOTE: flask_migrate.upgrade() is wrapped in @catch_errors, which calls
-    # sys.exit(1) on failure — that would kill the whole boot (and every
-    # platform deploy). We call the alembic command API directly, which
-    # raises normal exceptions, and additionally catch SystemExit.
-    def _run_db_upgrade() -> bool:
-        try:
-            from alembic import command as _alembic_command
+    try:
+        # NOTE: flask_migrate.upgrade() is wrapped in @catch_errors, which
+        # calls sys.exit(1) on failure — that would kill the whole boot (and
+        # every platform deploy). We call the alembic command API directly,
+        # which raises normal exceptions, and additionally catch SystemExit.
+        from alembic import command as _alembic_command
 
-            with app.app_context():
-                _alembic_cfg = app.extensions["migrate"].migrate.get_config()
-                _alembic_command.upgrade(_alembic_cfg, "head")
-            return True
-        except (Exception, SystemExit) as _mig_err:
-            logger.error("DB migration attempt failed: %s", _mig_err)
-            return False
-
-    if _run_db_upgrade():
+        with app.app_context():
+            _alembic_cfg = app.extensions["migrate"].migrate.get_config()
+            _alembic_command.upgrade(_alembic_cfg, "head")
         logger.info("DB migrations applied at boot")
-    else:
-        # Self-heal a stale alembic_version (e.g. it references a renamed or
-        # deleted revision). All migrations are idempotent, so replaying the
-        # chain from base against an existing schema is safe.
-        try:
-            with app.app_context():
-                with db.engine.begin() as _conn:
-                    _conn.exec_driver_sql("DELETE FROM alembic_version")
-        except (Exception, SystemExit) as _reset_err:
-            logger.error("alembic_version reset failed (continuing): %s", _reset_err)
-        if _run_db_upgrade():
-            logger.info("DB migrations applied after resetting alembic_version")
-        else:
-            logger.error("DB migration retry failed (continuing without migrations)")
+    except (Exception, SystemExit) as _mig_err:
+        logger.error("DB migration attempt failed (continuing): %s", _mig_err)
 
 # =========================
 # REGISTER BLUEPRINTS
@@ -454,38 +442,64 @@ def _migrate_debug():
 
     out: dict = {}
 
-    try:
-        with db.engine.connect() as conn:
-            rows = conn.exec_driver_sql("SELECT version_num FROM alembic_version").fetchall()
-            out["alembic_version"] = [r[0] for r in rows]
-    except Exception as e:
-        out["alembic_version_error"] = str(e)
-
-    for table in ("users", "companies"):
+    def _snapshot(prefix: str) -> None:
         try:
-            import sqlalchemy as sa
-
-            insp = sa.inspect(db.engine)
-            out[f"{table}_columns"] = sorted(c["name"] for c in insp.get_columns(table))
+            with db.engine.connect() as conn:
+                rows = conn.exec_driver_sql("SELECT version_num FROM alembic_version").fetchall()
+                out[f"{prefix}_alembic_version"] = [r[0] for r in rows]
         except Exception as e:
-            out[f"{table}_columns_error"] = str(e)
+            out[f"{prefix}_alembic_version_error"] = str(e)
 
-    try:
-        from alembic import command as _alembic_command
+        import sqlalchemy as sa
 
-        cfg = migrate.get_config()
-        _alembic_command.upgrade(cfg, "head")
-        out["upgrade_result"] = "success"
-    except BaseException:
-        out["upgrade_result"] = "failed"
-        out["upgrade_traceback"] = _tb.format_exc()
+        for table in ("users", "companies"):
+            try:
+                insp = sa.inspect(db.engine)
+                out[f"{prefix}_{table}_columns"] = sorted(c["name"] for c in insp.get_columns(table))
+            except Exception as e:
+                out[f"{prefix}_{table}_columns_error"] = str(e)
 
-    try:
-        with db.engine.connect() as conn:
-            rows = conn.exec_driver_sql("SELECT version_num FROM alembic_version").fetchall()
-            out["alembic_version_after"] = [r[0] for r in rows]
-    except Exception as e:
-        out["alembic_version_after_error"] = str(e)
+    _snapshot("before")
+
+    if request.args.get("repair") == "1":
+        # Direct, surgical fix: add exactly the columns models/company.py and
+        # models/user.py expect, via native "IF NOT EXISTS" DDL — no
+        # dependency on alembic's fragile older, non-idempotent migrations.
+        # Then stamp alembic_version to the known-good head so future boots
+        # stop attempting (and failing) a full replay.
+        statements = [
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_tos BOOLEAN NOT NULL DEFAULT false",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_privacy BOOLEAN NOT NULL DEFAULT false",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_refund BOOLEAN NOT NULL DEFAULT false",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS legal_accepted_at TIMESTAMP",
+            "ALTER TABLE companies ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(255)",
+            "ALTER TABLE companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT now()",
+        ]
+        try:
+            with db.engine.begin() as conn:
+                for stmt in statements:
+                    conn.exec_driver_sql(stmt)
+                conn.exec_driver_sql("DELETE FROM alembic_version")
+                conn.exec_driver_sql(
+                    "INSERT INTO alembic_version (version_num) VALUES ('20260406_companies_columns')"
+                )
+            out["repair_result"] = "success"
+        except Exception:
+            out["repair_result"] = "failed"
+            out["repair_traceback"] = _tb.format_exc()
+    else:
+        try:
+            from alembic import command as _alembic_command
+
+            cfg = migrate.get_config()
+            _alembic_command.upgrade(cfg, "head")
+            out["upgrade_result"] = "success"
+        except BaseException:
+            out["upgrade_result"] = "failed"
+            out["upgrade_traceback"] = _tb.format_exc()
+
+    _snapshot("after")
 
     return jsonify(out), 200
 

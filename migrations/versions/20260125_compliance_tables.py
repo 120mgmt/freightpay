@@ -15,13 +15,20 @@ branch_labels = None
 depends_on = None
 
 
-def _users_table_exists() -> bool:
+def _table_exists(name: str) -> bool:
     bind = op.get_bind()
     inspector = sa.inspect(bind)
-    return "users" in inspector.get_table_names()
+    return name in inspector.get_table_names()
+
+
+def _users_table_exists() -> bool:
+    return _table_exists("users")
 
 
 def upgrade() -> None:
+    if _table_exists("legal_documents"):
+        return  # already applied (idempotent replay guard)
+
     op.create_table(
         "legal_documents",
         sa.Column("id", sa.Integer(), primary_key=True, nullable=False),
