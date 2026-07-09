@@ -190,10 +190,14 @@ def _unhandled_exception(e):
         return jsonify({"error": e.name.lower().replace(" ", "_"), "message": e.description}), e.code
 
     logger.exception("Unhandled exception")
-    detail = str(e) if APP_ENV != "production" else None
-    payload = {"error": "internal_server_error", "message": "Something went wrong. Please try again."}
-    if detail:
-        payload["detail"] = detail
+    # TEMPORARY: expose the real error message in every environment so the
+    # first production incident can be diagnosed from the browser instead of
+    # server logs. Re-hide behind APP_ENV != "production" once resolved.
+    payload = {
+        "error": "internal_server_error",
+        "message": "Something went wrong. Please try again.",
+        "detail": str(e),
+    }
     return jsonify(payload), 500
 
 

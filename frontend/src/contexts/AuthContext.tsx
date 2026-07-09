@@ -68,7 +68,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           INVALID_CREDENTIALS: "Invalid email or password.",
           EMAIL_NOT_VERIFIED: "Please verify your email before signing in.",
         };
-        return { success: false, error: errorMap[data.error] || data.error || "Login failed.", code: data.error };
+        const shown = errorMap[data.error] || data.detail || data.error || "Login failed.";
+        return { success: false, error: shown, code: data.error };
       }
       setToken(data.token);
       setUser(data.user);
