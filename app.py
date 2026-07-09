@@ -190,14 +190,10 @@ def _unhandled_exception(e):
         return jsonify({"error": e.name.lower().replace(" ", "_"), "message": e.description}), e.code
 
     logger.exception("Unhandled exception")
-    # TEMPORARY: expose the real error message in every environment so the
-    # first production incident can be diagnosed from the browser instead of
-    # server logs. Re-hide behind APP_ENV != "production" once resolved.
-    payload = {
-        "error": "internal_server_error",
-        "message": "Something went wrong. Please try again.",
-        "detail": str(e),
-    }
+    detail = str(e) if APP_ENV != "production" else None
+    payload = {"error": "internal_server_error", "message": "Something went wrong. Please try again."}
+    if detail:
+        payload["detail"] = detail
     return jsonify(payload), 500
 
 
@@ -309,7 +305,7 @@ migrate = Migrate(app, db)
 # here previously wiped alembic_version and got permanently stuck retrying
 # a migration that fails with "relation already exists" on every boot,
 # which is worse than doing nothing. If migrations are ever genuinely out
-# of sync, reconcile deliberately (see /__migrate_debug), not automatically.
+# of sync, reconcile deliberately (via a one-off script), not automatically.
 if (os.getenv("RUN_MIGRATIONS_ON_BOOT") or "1").strip().lower() in {"1", "true", "yes"}:
     try:
         # NOTE: flask_migrate.upgrade() is wrapped in @catch_errors, which
@@ -418,90 +414,6 @@ def db_ping():
         return jsonify({"db": "ok"}), 200
     except Exception as e:
         return jsonify({"db": "error", "detail": str(e)}), 500
-
-
-# =========================
-# TEMPORARY MIGRATION DIAGNOSTIC
-# GET /__migrate_debug?key=<JWT_SECRET_KEY> — inspects alembic_version and
-# the columns the app currently expects, then runs the real migration
-# command with the full, unswallowed traceback returned in the response.
-# Gated by MIGRATE_DEBUG_KEY (falls back to JWT_SECRET_KEY if unset) —
-# set MIGRATE_DEBUG_KEY to something simple, alphanumeric-only, since the
-# JWT secret's special characters get mangled when pasted into a browser
-# address bar (e.g. "+" silently becomes a space).
-# Remove once the production migration issue is diagnosed and fixed.
-# =========================
-@app.route("/__migrate_debug")
-def _migrate_debug():
-    import traceback as _tb
-
-    key = (request.args.get("key") or "").strip()
-    expected = (os.getenv("MIGRATE_DEBUG_KEY") or os.getenv("JWT_SECRET_KEY") or "").strip()
-    if not expected or key != expected:
-        return jsonify({"error": "not_found"}), 404
-
-    out: dict = {}
-
-    def _snapshot(prefix: str) -> None:
-        try:
-            with db.engine.connect() as conn:
-                rows = conn.exec_driver_sql("SELECT version_num FROM alembic_version").fetchall()
-                out[f"{prefix}_alembic_version"] = [r[0] for r in rows]
-        except Exception as e:
-            out[f"{prefix}_alembic_version_error"] = str(e)
-
-        import sqlalchemy as sa
-
-        for table in ("users", "companies"):
-            try:
-                insp = sa.inspect(db.engine)
-                out[f"{prefix}_{table}_columns"] = sorted(c["name"] for c in insp.get_columns(table))
-            except Exception as e:
-                out[f"{prefix}_{table}_columns_error"] = str(e)
-
-    _snapshot("before")
-
-    if request.args.get("repair") == "1":
-        # Direct, surgical fix: add exactly the columns models/company.py and
-        # models/user.py expect, via native "IF NOT EXISTS" DDL — no
-        # dependency on alembic's fragile older, non-idempotent migrations.
-        # Then stamp alembic_version to the known-good head so future boots
-        # stop attempting (and failing) a full replay.
-        statements = [
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url TEXT",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_tos BOOLEAN NOT NULL DEFAULT false",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_privacy BOOLEAN NOT NULL DEFAULT false",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS accepted_refund BOOLEAN NOT NULL DEFAULT false",
-            "ALTER TABLE users ADD COLUMN IF NOT EXISTS legal_accepted_at TIMESTAMP",
-            "ALTER TABLE companies ADD COLUMN IF NOT EXISTS stripe_customer_id VARCHAR(255)",
-            "ALTER TABLE companies ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT now()",
-        ]
-        try:
-            with db.engine.begin() as conn:
-                for stmt in statements:
-                    conn.exec_driver_sql(stmt)
-                conn.exec_driver_sql("DELETE FROM alembic_version")
-                conn.exec_driver_sql(
-                    "INSERT INTO alembic_version (version_num) VALUES ('20260406_companies_columns')"
-                )
-            out["repair_result"] = "success"
-        except Exception:
-            out["repair_result"] = "failed"
-            out["repair_traceback"] = _tb.format_exc()
-    else:
-        try:
-            from alembic import command as _alembic_command
-
-            cfg = migrate.get_config()
-            _alembic_command.upgrade(cfg, "head")
-            out["upgrade_result"] = "success"
-        except BaseException:
-            out["upgrade_result"] = "failed"
-            out["upgrade_traceback"] = _tb.format_exc()
-
-    _snapshot("after")
-
-    return jsonify(out), 200
 
 
 # =========================
