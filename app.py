@@ -433,6 +433,61 @@ def db_ping():
 
 
 # =========================
+# TEMPORARY MIGRATION DIAGNOSTIC
+# GET /__migrate_debug?key=<JWT_SECRET_KEY> — inspects alembic_version and
+# the columns the app currently expects, then runs the real migration
+# command with the full, unswallowed traceback returned in the response.
+# Gated behind the existing JWT secret so no new Render env var is needed.
+# Remove once the production migration issue is diagnosed and fixed.
+# =========================
+@app.route("/__migrate_debug")
+def _migrate_debug():
+    import traceback as _tb
+
+    key = (request.args.get("key") or "").strip()
+    expected = (os.getenv("JWT_SECRET_KEY") or "").strip()
+    if not expected or key != expected:
+        return jsonify({"error": "not_found"}), 404
+
+    out: dict = {}
+
+    try:
+        with db.engine.connect() as conn:
+            rows = conn.exec_driver_sql("SELECT version_num FROM alembic_version").fetchall()
+            out["alembic_version"] = [r[0] for r in rows]
+    except Exception as e:
+        out["alembic_version_error"] = str(e)
+
+    for table in ("users", "companies"):
+        try:
+            import sqlalchemy as sa
+
+            insp = sa.inspect(db.engine)
+            out[f"{table}_columns"] = sorted(c["name"] for c in insp.get_columns(table))
+        except Exception as e:
+            out[f"{table}_columns_error"] = str(e)
+
+    try:
+        from alembic import command as _alembic_command
+
+        cfg = migrate.get_config()
+        _alembic_command.upgrade(cfg, "head")
+        out["upgrade_result"] = "success"
+    except BaseException:
+        out["upgrade_result"] = "failed"
+        out["upgrade_traceback"] = _tb.format_exc()
+
+    try:
+        with db.engine.connect() as conn:
+            rows = conn.exec_driver_sql("SELECT version_num FROM alembic_version").fetchall()
+            out["alembic_version_after"] = [r[0] for r in rows]
+    except Exception as e:
+        out["alembic_version_after_error"] = str(e)
+
+    return jsonify(out), 200
+
+
+# =========================
 # ROOT
 # =========================
 @app.route("/")
