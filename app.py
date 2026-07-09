@@ -437,7 +437,10 @@ def db_ping():
 # GET /__migrate_debug?key=<JWT_SECRET_KEY> — inspects alembic_version and
 # the columns the app currently expects, then runs the real migration
 # command with the full, unswallowed traceback returned in the response.
-# Gated behind the existing JWT secret so no new Render env var is needed.
+# Gated by MIGRATE_DEBUG_KEY (falls back to JWT_SECRET_KEY if unset) —
+# set MIGRATE_DEBUG_KEY to something simple, alphanumeric-only, since the
+# JWT secret's special characters get mangled when pasted into a browser
+# address bar (e.g. "+" silently becomes a space).
 # Remove once the production migration issue is diagnosed and fixed.
 # =========================
 @app.route("/__migrate_debug")
@@ -445,7 +448,7 @@ def _migrate_debug():
     import traceback as _tb
 
     key = (request.args.get("key") or "").strip()
-    expected = (os.getenv("JWT_SECRET_KEY") or "").strip()
+    expected = (os.getenv("MIGRATE_DEBUG_KEY") or os.getenv("JWT_SECRET_KEY") or "").strip()
     if not expected or key != expected:
         return jsonify({"error": "not_found"}), 404
 
