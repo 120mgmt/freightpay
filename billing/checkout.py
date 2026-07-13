@@ -193,6 +193,22 @@ def billing_health():
     return jsonify({"status": "ok"}), 200
 
 
+@billing_bp.get("/debug-prices")
+def billing_debug_prices():
+    """
+    Temporary diagnostic: shows exactly which Stripe price IDs this running
+    process currently has loaded from its environment. Price IDs are not
+    secret (Stripe secret/webhook keys are never exposed here).
+    """
+    secret = _get_env("STRIPE_SECRET_KEY") or ""
+    return jsonify(
+        {
+            "stripe_mode": "live" if secret.startswith("sk_live_") else ("test" if secret.startswith("sk_test_") else "unset"),
+            "pricing": _pricing_from_env(),
+        }
+    ), 200
+
+
 def _plan_key_for_price(price_id: str) -> Optional[str]:
     if not price_id:
         return None
