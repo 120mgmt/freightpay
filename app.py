@@ -360,6 +360,10 @@ app.register_blueprint(compliance_bp)
 app.register_blueprint(compliance_health_bp)
 app.register_blueprint(admin_compliance_bp)
 
+# Platform admin portal (gated by PLATFORM_ADMIN_EMAILS)
+from routes.admin_portal import admin_portal_bp  # noqa: E402
+app.register_blueprint(admin_portal_bp)
+
 # Pricing
 app.register_blueprint(pricing_cpm_bp)
 app.register_blueprint(admin_pricing_cpm_bp)

@@ -21,6 +21,7 @@ import Billing from "./pages/Billing.tsx";
 import Settings from "./pages/Settings.tsx";
 import Terms from "./pages/Terms.tsx";
 import Privacy from "./pages/Privacy.tsx";
+import Admin from "./pages/Admin.tsx";
 
 const queryClient = new QueryClient();
 
@@ -51,6 +52,7 @@ const App = () => (
             <Route path="/reports"     element={guard(<Reports />)} />
             <Route path="/billing"     element={guard(<Billing />)} />
             <Route path="/settings"    element={guard(<Settings />)} />
+            <Route path="/admin"       element={guard(<Admin />)} />
             {/* Catch-all */}
             <Route path="*" element={<NotFound />} />
           </Routes>

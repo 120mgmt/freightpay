@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, DollarSign, Users, BookOpen,
-  FileText, CreditCard, Settings, LogOut,
+  FileText, CreditCard, Settings, LogOut, ShieldCheck,
 } from "lucide-react";
 
 const NAV = [
@@ -13,6 +13,8 @@ const NAV = [
   { label: "Reports",     icon: FileText,         to: "/reports" },
   { label: "Billing",     icon: CreditCard,       to: "/billing" },
 ];
+
+const ADMIN_ITEM = { label: "Admin", icon: ShieldCheck, to: "/admin" };
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -65,7 +67,11 @@ const AppLayout = ({ children, active }: AppLayoutProps) => {
 
       {/* Mobile nav */}
       <nav className="md:hidden flex overflow-x-auto border-b border-border bg-surface px-2">
-        {[...NAV, { label: "Settings", icon: Settings, to: "/settings" }].map((item) => {
+        {[
+          ...NAV,
+          ...(user?.is_platform_admin ? [ADMIN_ITEM] : []),
+          { label: "Settings", icon: Settings, to: "/settings" },
+        ].map((item) => {
           const isActive = active === item.label;
           return (
             <Link
@@ -104,6 +110,19 @@ const AppLayout = ({ children, active }: AppLayoutProps) => {
               </Link>
             );
           })}
+          {user?.is_platform_admin && (
+            <Link
+              to={ADMIN_ITEM.to}
+              className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                active === "Admin"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              }`}
+            >
+              <ShieldCheck size={18} />
+              Admin
+            </Link>
+          )}
           <div className="mt-auto">
             <Link
               to="/settings"

@@ -8,6 +8,7 @@ export interface User {
   role: string;
   company_id: string;
   avatar_url?: string | null;
+  is_platform_admin?: boolean;
 }
 
 interface AuthContextType {
