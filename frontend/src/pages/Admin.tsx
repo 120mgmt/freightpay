@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Loader2, Building2, Users as UsersIcon, ShieldAlert, RefreshCw,
   Search, CheckCircle2, XCircle, KeyRound, ChevronLeft, ChevronRight,
+  ShieldCheck, ShieldOff,
 } from "lucide-react";
 
 /* ---------- types ---------- */
@@ -618,6 +619,12 @@ const Admin = () => {
                         </td>
                         <td className="px-4 py-3">{statusPill(u.is_active, "Active", "Disabled")}</td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <Button variant="outline" size="sm" className="mr-2"
+                            title={u.is_platform_admin ? "Revoke platform admin" : "Make platform admin"}
+                            disabled={busyUser === u.id}
+                            onClick={() => patchUser(u, { is_platform_admin: !u.is_platform_admin })}>
+                            {u.is_platform_admin ? <ShieldOff size={13} /> : <ShieldCheck size={13} />}
+                          </Button>
                           <Button variant="outline" size="sm" className="mr-2" title="Generate password reset link"
                             disabled={busyUser === u.id} onClick={() => genResetLink(u)}>
                             <KeyRound size={13} />

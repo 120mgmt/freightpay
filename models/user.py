@@ -46,6 +46,10 @@ class User(db.Model):
     role = Column(String(50), nullable=False, default="admin")  # admin | manager | viewer
     is_active = Column(Boolean, nullable=False, default=True)
 
+    # Platform-owner access (cross-tenant admin portal). DB-backed so it does
+    # not depend on hosting env vars; managed from the admin portal.
+    is_platform_admin = Column(Boolean, nullable=False, default=False)
+
     # Email verification
     email_verified = Column(Boolean, nullable=False, default=False)
 
@@ -113,6 +117,7 @@ class User(db.Model):
             "last_name": self.last_name,
             "role": self.role,
             "is_active": bool(self.is_active),
+            "is_platform_admin": bool(self.is_platform_admin),
             "email_verified": bool(self.email_verified),
             "avatar_url": self.avatar_url,
             "accepted_tos": bool(self.accepted_tos),
