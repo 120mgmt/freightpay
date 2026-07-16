@@ -263,7 +263,7 @@ def _params_signature(params: Dict[str, Any]) -> str:
     import json
 
     blob = json.dumps(params, sort_keys=True, default=str)
-    return hashlib.sha1(blob.encode()).hexdigest()[:10]
+    return hashlib.sha256(blob.encode()).hexdigest()[:10]
 
 
 def _create_checkout_session_compat(stripe, kwargs: Dict[str, Any], idem_key: str):
