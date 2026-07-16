@@ -67,6 +67,37 @@ def platform_admin_required(fn: Callable[..., T]) -> Callable[..., T]:
     return wrapper  # type: ignore[return-value]
 
 
+@admin_portal_bp.get("/whoami")
+def whoami():
+    """
+    Temporary diagnostic (no platform-admin gate — any signed-in user can
+    call this on themselves): shows exactly what the live backend process
+    is comparing, to debug PLATFORM_ADMIN_EMAILS mismatches without
+    guessing from dashboard screenshots.
+    """
+    from flask_jwt_extended import verify_jwt_in_request
+
+    try:
+        verify_jwt_in_request()
+    except Exception:
+        return jsonify({"error": "UNAUTHORIZED"}), 401
+
+    user = get_current_user()
+    if not user:
+        return jsonify({"error": "UNAUTHORIZED"}), 401
+
+    configured = sorted(_platform_admin_emails())
+    return jsonify(
+        {
+            "your_email_from_db": user.email,
+            "your_email_repr": repr(user.email),
+            "is_platform_admin": is_platform_admin_email(user.email),
+            "platform_admin_emails_configured": configured,
+            "platform_admin_emails_raw_env_set": bool(os.getenv("PLATFORM_ADMIN_EMAILS")),
+        }
+    ), 200
+
+
 # ------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------
