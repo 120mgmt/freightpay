@@ -11,6 +11,8 @@ import re
 from datetime import datetime, timezone
 from urllib.parse import urlsplit, urlunsplit
 
+import env_bootstrap  # noqa: F401  # MUST be first: applies DB-stored env overrides before blueprint imports validate env vars
+
 import stripe
 from dotenv import load_dotenv
 from flask import Flask, jsonify, make_response, request
