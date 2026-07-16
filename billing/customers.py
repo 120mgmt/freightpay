@@ -323,6 +323,48 @@ def get_or_create_company_customer(
     }
 
 
+def repair_company_customer(
+    *,
+    company_id: int,
+    email: Optional[str] = None,
+    name: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    The stored stripe_customer_id no longer exists in the connected Stripe
+    account (typically after switching accounts): find or create a customer
+    in the CURRENT account and overwrite the mapping.
+    """
+    stripe = _stripe_client()
+
+    scid = _find_existing_stripe_customer_for_company(stripe, company_id)
+    if not scid:
+        cust = stripe.Customer.create(
+            email=email,
+            name=name,
+            metadata={
+                "company_id": str(company_id),
+                "app": "LedgerHaul",
+            },
+            idempotency_key=(
+                f"ledgerhaul_customer_repair_company_{company_id}_{_now()}"
+            ),
+        )
+        scid = (cust.get("id") or "").strip()
+        if not scid:
+            raise RuntimeError("Stripe did not return a customer id")
+
+    upsert_company_customer(
+        company_id=company_id,
+        stripe_customer_id=scid,
+        email=email,
+        name=name,
+    )
+    return get_company_customer(company_id) or {
+        "company_id": company_id,
+        "stripe_customer_id": scid,
+    }
+
+
 @customer_bp.get("/health")
 def customers_health() -> Tuple[Response, int]:
     try:

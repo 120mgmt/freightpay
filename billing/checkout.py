@@ -265,6 +265,10 @@ def _is_no_such_price_error(err: Exception) -> bool:
     return "no such price" in str(err).lower()
 
 
+def _is_no_such_customer_error(err: Exception) -> bool:
+    return "no such customer" in str(err).lower()
+
+
 def _params_signature(params: Dict[str, Any]) -> str:
     import hashlib
     import json
@@ -504,6 +508,11 @@ def billing_status():
             }
         ), 200
     except Exception as e:
+        if _is_no_such_customer_error(e):
+            # Mapping from a previously connected Stripe account — the
+            # company simply has no subscription in the current one.
+            # Checkout self-repairs the mapping on the next subscribe.
+            return jsonify(none_payload), 200
         return _json_error("billing_status_failed", 500, detail=str(e))
 
 
@@ -637,15 +646,28 @@ def checkout_create():
         try:
             session = _create_session(line_items)
         except Exception as first_err:
-            if not _is_no_such_price_error(first_err):
+            if _is_no_such_price_error(first_err):
+                # Env var pointed at a stale/wrong-mode price. Re-resolve from
+                # the live Stripe catalog (env ignored) and retry once.
+                catalog_only = _pricing_from_catalog(stripe, force=True)
+                retry_items = _line_items_for_plan(catalog_only, plan_key, employees)
+                if retry_items == line_items:
+                    raise
+                session = _create_session(retry_items)
+            elif _is_no_such_customer_error(first_err):
+                # Mapping points at a customer from a previously connected
+                # Stripe account. Recreate in the current account and retry.
+                from billing.customers import repair_company_customer
+
+                rec = repair_company_customer(
+                    company_id=company_id,
+                    email=customer_email,
+                    name=customer_name,
+                )
+                session_kwargs["customer"] = rec["stripe_customer_id"]
+                session = _create_session(line_items)
+            else:
                 raise
-            # Env var pointed at a stale/wrong-mode price. Re-resolve from
-            # the live Stripe catalog (env ignored) and retry once.
-            catalog_only = _pricing_from_catalog(stripe, force=True)
-            retry_items = _line_items_for_plan(catalog_only, plan_key, employees)
-            if retry_items == line_items:
-                raise
-            session = _create_session(retry_items)
 
         return jsonify(
             {
@@ -715,11 +737,13 @@ def checkout_link():
     try:
         stripe = _stripe_client()
 
-        customer_id = _resolve_company_customer_id(
-            company_id=company_id,
-            email=customer_email,
-            name=customer_name,
-        )
+        cust = {
+            "id": _resolve_company_customer_id(
+                company_id=company_id,
+                email=customer_email,
+                name=customer_name,
+            )
+        }
 
         def _create_session(items: List[Dict[str, Any]]):
             key_suffix = "-".join(str(li["price"])[-8:] for li in items)
@@ -733,7 +757,7 @@ def checkout_link():
                     "allow_promotion_codes": _truthy(
                         _get_env("STRIPE_CHECKOUT_ALLOW_PROMO_CODES", "0")
                     ),
-                    "customer": customer_id,
+                    "customer": cust["id"],
                     "metadata": {
                         "company_id": str(company_id),
                         "plan": plan_key,
@@ -753,13 +777,24 @@ def checkout_link():
         try:
             session = _create_session(line_items)
         except Exception as first_err:
-            if not _is_no_such_price_error(first_err):
+            if _is_no_such_price_error(first_err):
+                catalog_only = _pricing_from_catalog(stripe, force=True)
+                retry_items = _line_items_for_plan(catalog_only, plan_key, employees)
+                if retry_items == line_items:
+                    raise
+                session = _create_session(retry_items)
+            elif _is_no_such_customer_error(first_err):
+                from billing.customers import repair_company_customer
+
+                rec = repair_company_customer(
+                    company_id=company_id,
+                    email=customer_email,
+                    name=customer_name,
+                )
+                cust["id"] = rec["stripe_customer_id"]
+                session = _create_session(line_items)
+            else:
                 raise
-            catalog_only = _pricing_from_catalog(stripe, force=True)
-            retry_items = _line_items_for_plan(catalog_only, plan_key, employees)
-            if retry_items == line_items:
-                raise
-            session = _create_session(retry_items)
 
         return redirect(session.get("url"), code=302)
 
