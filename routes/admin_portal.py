@@ -556,6 +556,20 @@ def get_platform_settings():
         }
     secret = (get_setting("stripe_secret_key") or os.getenv("STRIPE_SECRET_KEY") or "").strip()
     out["stripe_identity"] = _stripe_identity_for_key(secret) if secret else {"ok": False, "error": "no key set"}
+
+    from utils.mailer import smtp_configured
+
+    def _eff(skey: str, env: str) -> str:
+        return (get_setting(skey) or os.getenv(env) or "").strip()
+
+    out["smtp"] = {
+        "host": _eff("smtp_host", "SMTP_HOST"),
+        "port": _eff("smtp_port", "SMTP_PORT") or "587",
+        "user": _eff("smtp_user", "SMTP_USER"),
+        "from_email": _eff("from_email", "FROM_EMAIL"),
+        "password_hint": secret_hint(_eff("smtp_password", "SMTP_PASSWORD")),
+        "configured": smtp_configured(),
+    }
     return jsonify(out), 200
 
 
@@ -599,11 +613,50 @@ def set_platform_settings():
         set_setting("stripe_webhook_secret", val)
         result["stripe_webhook_secret"] = {"hint": secret_hint(val) if val else "cleared"}
 
+    smtp_fields = {
+        "smtp_host": None,
+        "smtp_port": None,
+        "smtp_user": None,
+        "smtp_password": None,
+        "from_email": None,
+    }
+    for field in smtp_fields:
+        if field in data:
+            val = (str(data[field] or "")).strip()
+            if field == "smtp_port" and val and not val.isdigit():
+                return jsonify({"error": "INVALID_SMTP_PORT"}), 400
+            if field == "from_email" and val and "@" not in val:
+                return jsonify({"error": "INVALID_FROM_EMAIL"}), 400
+            set_setting(field, val)
+            result[field] = "saved" if val else "cleared"
+
     if not result:
         return jsonify({"error": "NO_SETTINGS_PROVIDED"}), 400
 
     result["status"] = "saved"
     return jsonify(result), 200
+
+
+@admin_portal_bp.post("/platform-settings/test-email")
+@platform_admin_required
+def test_email():
+    """Sends a test email to the requesting admin's own address."""
+    me: User = request.platform_admin  # type: ignore[attr-defined]
+    from utils.mailer import send_email
+
+    try:
+        send_email(
+            to_email=me.email,
+            subject="LedgerHaul test email",
+            html_body=(
+                "<div style='font-family:Arial,sans-serif;'>"
+                "<p>Your SMTP settings work — this test email was sent from "
+                "the LedgerHaul admin portal.</p></div>"
+            ),
+        )
+        return jsonify({"status": "sent", "to": me.email}), 200
+    except Exception as e:
+        return jsonify({"error": "TEST_EMAIL_FAILED", "detail": str(e)}), 502
 
 
 # ------------------------------------------------------------------
