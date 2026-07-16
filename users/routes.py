@@ -69,7 +69,7 @@ def login():
 
     token = login_user(user=user)
 
-    from routes.admin_portal import is_platform_admin_email
+    from routes.admin_portal import user_is_platform_admin
 
     return jsonify(
         {
@@ -82,7 +82,7 @@ def login():
                 "role": user.role,
                 "company_id": str(user.company_id),
                 "avatar_url": user.avatar_url,
-                "is_platform_admin": is_platform_admin_email(user.email),
+                "is_platform_admin": user_is_platform_admin(user),
             },
         }
     ), 200
@@ -165,7 +165,7 @@ def me():
     user = get_current_user()
     if not user:
         return jsonify({"error": "UNAUTHORIZED"}), 401
-    from routes.admin_portal import is_platform_admin_email
+    from routes.admin_portal import user_is_platform_admin
 
     return jsonify(
         {
@@ -177,7 +177,7 @@ def me():
             "company_id": str(user.company_id),
             "is_active": user.is_active,
             "avatar_url": user.avatar_url,
-            "is_platform_admin": is_platform_admin_email(user.email),
+            "is_platform_admin": user_is_platform_admin(user),
         }
     ), 200
 

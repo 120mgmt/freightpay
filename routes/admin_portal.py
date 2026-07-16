@@ -40,9 +40,37 @@ def _platform_admin_emails() -> set[str]:
 
 
 def is_platform_admin_email(email: Optional[str]) -> bool:
+    """Env-list membership only (does not consider the first-user fallback)."""
     if not email:
         return False
     return email.strip().lower() in _platform_admin_emails()
+
+
+def _first_user_id() -> Optional[int]:
+    """id of the earliest-registered user (the account that owns the deploy)."""
+    try:
+        return db.session.execute(select(func.min(User.id))).scalar()
+    except Exception:
+        db.session.rollback()
+        return None
+
+
+def user_is_platform_admin(user: Optional[User]) -> bool:
+    """
+    A user is a platform admin if their email is in PLATFORM_ADMIN_EMAILS.
+
+    Bootstrap fallback: if that env var is unset/empty (common right after
+    launch, or when the hosting dashboard fails to persist the value), the
+    very first registered account — the platform owner — is treated as the
+    admin so the portal is never permanently locked out. Setting
+    PLATFORM_ADMIN_EMAILS later takes precedence and disables the fallback.
+    """
+    if not user:
+        return False
+    configured = _platform_admin_emails()
+    if configured:
+        return (user.email or "").strip().lower() in configured
+    return user.id is not None and user.id == _first_user_id()
 
 
 def platform_admin_required(fn: Callable[..., T]) -> Callable[..., T]:
@@ -58,7 +86,7 @@ def platform_admin_required(fn: Callable[..., T]) -> Callable[..., T]:
         user = get_current_user()
         if not user or not user.is_active:
             return jsonify({"error": "UNAUTHORIZED"}), 401
-        if not is_platform_admin_email(user.email):
+        if not user_is_platform_admin(user):
             return jsonify({"error": "PLATFORM_ADMIN_ONLY"}), 403
 
         request.platform_admin = user  # type: ignore[attr-defined]
@@ -91,7 +119,14 @@ def whoami():
         {
             "your_email_from_db": user.email,
             "your_email_repr": repr(user.email),
-            "is_platform_admin": is_platform_admin_email(user.email),
+            "your_user_id": user.id,
+            "first_user_id": _first_user_id(),
+            "is_platform_admin": user_is_platform_admin(user),
+            "granted_via": (
+                "env_list" if configured and is_platform_admin_email(user.email)
+                else "first_user_fallback" if not configured and user_is_platform_admin(user)
+                else "none"
+            ),
             "platform_admin_emails_configured": configured,
             "platform_admin_emails_raw_env_set": bool(os.getenv("PLATFORM_ADMIN_EMAILS")),
         }
@@ -125,7 +160,7 @@ def _user_row(u: User, company_name: Optional[str] = None) -> Dict[str, Any]:
         "company_id": u.company_id,
         "company_name": company_name,
         "created_at": u.created_at.isoformat() if u.created_at else None,
-        "is_platform_admin": is_platform_admin_email(u.email),
+        "is_platform_admin": user_is_platform_admin(u),
     }
 
 
