@@ -19,6 +19,11 @@ from db import db
 ENV_BACKED_KEYS: Dict[str, str] = {
     "stripe_secret_key": "STRIPE_SECRET_KEY",
     "stripe_webhook_secret": "STRIPE_WEBHOOK_SECRET",
+    "smtp_host": "SMTP_HOST",
+    "smtp_port": "SMTP_PORT",
+    "smtp_user": "SMTP_USER",
+    "smtp_password": "SMTP_PASSWORD",
+    "from_email": "FROM_EMAIL",
 }
 
 

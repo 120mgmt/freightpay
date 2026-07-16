@@ -23,30 +23,41 @@ def _smtp_port() -> int:
         return 587
 
 
-SMTP_HOST = (os.getenv("SMTP_HOST") or "").strip() or None
-SMTP_PORT = _smtp_port()
-SMTP_USER = (os.getenv("SMTP_USER") or "").strip() or None
-SMTP_PASSWORD = (os.getenv("SMTP_PASSWORD") or "").strip() or None
-FROM_EMAIL = (os.getenv("FROM_EMAIL") or "").strip() or (SMTP_USER or "")
+def _smtp_config():
+    """
+    Read at CALL time, not import time: settings saved through the admin
+    portal (platform_settings -> os.environ) must apply without a restart.
+    """
+    host = (os.getenv("SMTP_HOST") or "").strip() or None
+    user = (os.getenv("SMTP_USER") or "").strip() or None
+    password = (os.getenv("SMTP_PASSWORD") or "").strip() or None
+    from_email = (os.getenv("FROM_EMAIL") or "").strip() or (user or "")
+    return host, _smtp_port(), user, password, from_email
+
+
+def smtp_configured() -> bool:
+    host, port, user, password, from_email = _smtp_config()
+    return bool(host and port and user and password and from_email)
 
 
 def send_email(to_email: str, subject: str, html_body: str):
-    if not all([SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD, FROM_EMAIL]):
-        raise RuntimeError("SMTP environment variables not fully configured")
+    host, port, user, password, from_email = _smtp_config()
+    if not all([host, port, user, password, from_email]):
+        raise RuntimeError("SMTP settings not configured (set them in Admin -> Settings)")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = FROM_EMAIL
+    msg["From"] = from_email
     msg["To"] = to_email
 
     part = MIMEText(html_body, "html")
     msg.attach(part)
 
     try:
-        server = smtplib.SMTP(SMTP_HOST, SMTP_PORT)
+        server = smtplib.SMTP(host, port, timeout=20)
         server.starttls()
-        server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(FROM_EMAIL, to_email, msg.as_string())
+        server.login(user, password)
+        server.sendmail(from_email, to_email, msg.as_string())
         server.quit()
     except Exception as e:
         raise RuntimeError(f"Email send failed: {str(e)}")

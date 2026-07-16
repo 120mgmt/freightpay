@@ -103,6 +103,7 @@ interface PlatformSettings {
   stripe_secret_key?: { hint: string; source: string };
   stripe_webhook_secret?: { hint: string; source: string };
   stripe_identity?: { ok: boolean; account_id?: string; account_name?: string; error?: string };
+  smtp?: { host: string; port: string; user: string; from_email: string; password_hint: string; configured: boolean };
 }
 
 /* ---------- page ---------- */
@@ -151,6 +152,14 @@ const Admin = () => {
   const [newSecretKey, setNewSecretKey] = useState("");
   const [newWebhookSecret, setNewWebhookSecret] = useState("");
   const [settingsMsg, setSettingsMsg] = useState("");
+  const [smtpHost, setSmtpHost] = useState("");
+  const [smtpPort, setSmtpPort] = useState("");
+  const [smtpUser, setSmtpUser] = useState("");
+  const [smtpPassword, setSmtpPassword] = useState("");
+  const [fromEmail, setFromEmail] = useState("");
+  const [savingSmtp, setSavingSmtp] = useState(false);
+  const [testingEmail, setTestingEmail] = useState(false);
+  const [smtpMsg, setSmtpMsg] = useState("");
 
   const PER_PAGE = 25;
 
@@ -247,12 +256,65 @@ const Admin = () => {
     setError("");
     try {
       const data = await guard(await apiFetch("/api/admin/platform-settings"));
-      if (data) setSettings(data);
+      if (data) {
+        setSettings(data);
+        if (data.smtp) {
+          setSmtpHost(data.smtp.host || "");
+          setSmtpPort(data.smtp.port || "587");
+          setSmtpUser(data.smtp.user || "");
+          setFromEmail(data.smtp.from_email || "");
+        }
+      }
     } catch {
       setError("Network error.");
     }
     setLoadingSettings(false);
   }, []);
+
+  const saveSmtp = async () => {
+    setSavingSmtp(true);
+    setSmtpMsg("");
+    setError("");
+    try {
+      const body: Record<string, string> = {
+        smtp_host: smtpHost.trim(),
+        smtp_port: smtpPort.trim(),
+        smtp_user: smtpUser.trim(),
+        from_email: fromEmail.trim(),
+      };
+      if (smtpPassword.trim()) body.smtp_password = smtpPassword.trim();
+      const res = await apiFetch("/api/admin/platform-settings", { method: "POST", body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSmtpMsg("Email settings saved and applied instantly. Use 'Send test email' to verify.");
+        setSmtpPassword("");
+        loadSettings();
+      } else {
+        setError(data.detail || data.error || "Could not save email settings.");
+      }
+    } catch {
+      setError("Network error.");
+    }
+    setSavingSmtp(false);
+  };
+
+  const sendTestEmail = async () => {
+    setTestingEmail(true);
+    setSmtpMsg("");
+    setError("");
+    try {
+      const res = await apiFetch("/api/admin/platform-settings/test-email", { method: "POST" });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSmtpMsg(`Test email sent to ${data.to} — check that inbox (and spam).`);
+      } else {
+        setError(data.detail || data.error || "Test email failed.");
+      }
+    } catch {
+      setError("Network error.");
+    }
+    setTestingEmail(false);
+  };
 
   const saveSettings = async () => {
     const body: Record<string, string> = {};
@@ -908,6 +970,71 @@ const Admin = () => {
                       <div className="p-3 rounded-xl text-sm border border-primary/30 bg-primary/5">{settingsMsg}</div>
                     )}
                   </div>
+                </div>
+
+                <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                  <h2 className="text-lg font-bold mb-1">Email (SMTP)</h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Used for verification emails, password resets and notifications.
+                    For Gmail: host <span className="font-mono text-xs">smtp.gmail.com</span>, port 587,
+                    your Gmail address as username, and an <b>App Password</b> (not your normal password —
+                    create one at myaccount.google.com &rarr; Security &rarr; App passwords, requires 2-step verification).
+                  </p>
+
+                  <div className={`flex items-center justify-between rounded-lg border px-3 py-2 mb-4 text-sm ${
+                    settings?.smtp?.configured ? "border-primary/40 bg-primary/5" : "border-destructive/40 bg-destructive/5"
+                  }`}>
+                    <span className="text-muted-foreground">Status</span>
+                    <span className="font-semibold text-xs">
+                      {settings?.smtp?.configured ? "Configured" : "Not configured — emails cannot send"}
+                    </span>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-sm font-medium block mb-1">SMTP host</label>
+                      <input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.gmail.com"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm outline-none focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-1">Port</label>
+                      <input value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="587"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm outline-none focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-1">Username</label>
+                      <input value={smtpUser} onChange={(e) => setSmtpUser(e.target.value)} placeholder="you@gmail.com"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm outline-none focus:border-primary" />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-1">
+                        Password {settings?.smtp?.password_hint && settings.smtp.password_hint !== "unset" && (
+                          <span className="text-xs text-muted-foreground">(saved: {settings.smtp.password_hint} — leave blank to keep)</span>
+                        )}
+                      </label>
+                      <input type="password" value={smtpPassword} onChange={(e) => setSmtpPassword(e.target.value)} placeholder="app password"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm outline-none focus:border-primary" />
+                    </div>
+                    <div className="sm:col-span-2">
+                      <label className="text-sm font-medium block mb-1">From address</label>
+                      <input value={fromEmail} onChange={(e) => setFromEmail(e.target.value)} placeholder="support@ledgerhaul.com"
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm outline-none focus:border-primary" />
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 mt-4">
+                    <Button onClick={saveSmtp} disabled={savingSmtp}>
+                      {savingSmtp ? <Loader2 size={14} className="animate-spin mr-1" /> : null}
+                      Save email settings
+                    </Button>
+                    <Button variant="outline" onClick={sendTestEmail} disabled={testingEmail || !settings?.smtp?.configured}>
+                      {testingEmail ? <Loader2 size={14} className="animate-spin mr-1" /> : null}
+                      Send test email to me
+                    </Button>
+                  </div>
+                  {smtpMsg && (
+                    <div className="p-3 mt-3 rounded-xl text-sm border border-primary/30 bg-primary/5">{smtpMsg}</div>
+                  )}
                 </div>
               </div>
             )}
