@@ -86,6 +86,23 @@ def _base_url() -> str:
     return request.host_url.rstrip("/")
 
 
+def _frontend_base_url() -> str:
+    """
+    Where Stripe should send the customer back to. This must be the app
+    site, never the API host (request.host_url here is api.ledgerhaul.com,
+    which has no pages). Hard default to the real site because env vars
+    have proven unreliable on this hosting setup.
+    """
+    explicit = (
+        _get_env("FRONTEND_BASE_URL")
+        or _get_env("BASE_URL")
+        or _get_env("APP_BASE_URL")
+    )
+    if explicit and "api." not in explicit:
+        return explicit.rstrip("/")
+    return "https://www.ledgerhaul.com"
+
+
 def _require_company_id(data: Dict[str, Any]) -> int:
     """
     REQUIRED for production: checkout must bind to a company_id.
@@ -196,14 +213,24 @@ def _pricing_from_catalog(stripe, force: bool = False) -> Dict[str, Dict[str, Op
         "payroll_only": {"base_price_id": None, "per_employee_price_id": None},
         "bookkeeping_only": {"base_price_id": None, "per_employee_price_id": None},
     }
+    def _looks_per_driver(p: Any) -> bool:
+        label = f"{p.get('nickname') or ''} {p.get('lookup_key') or ''}".lower()
+        return any(w in label for w in ("driver", "employee", "seat", "per_"))
+
     for plan, plist in buckets.items():
-        plist.sort(
+        # Prices explicitly labelled per-driver/seat are never the base.
+        labelled = [p for p in plist if _looks_per_driver(p)]
+        candidates = [p for p in plist if not _looks_per_driver(p)] or plist
+        candidates.sort(
             key=lambda p: (int(p.get("unit_amount") or 0), int(p.get("created") or 0)),
             reverse=True,
         )
-        pricing[plan]["base_price_id"] = plist[0]["id"]
-        if plan != "bookkeeping_only" and len(plist) > 1:
-            pricing[plan]["per_employee_price_id"] = plist[-1]["id"]
+        pricing[plan]["base_price_id"] = candidates[0]["id"]
+        if plan != "bookkeeping_only":
+            if labelled:
+                pricing[plan]["per_employee_price_id"] = labelled[0]["id"]
+            elif len(candidates) > 1:
+                pricing[plan]["per_employee_price_id"] = candidates[-1]["id"]
 
     _catalog_cache["at"] = now
     _catalog_cache["pricing"] = pricing
@@ -229,6 +256,30 @@ def _effective_pricing(stripe, force_catalog: bool = False) -> Dict[str, Dict[st
 
 def _is_no_such_price_error(err: Exception) -> bool:
     return "no such price" in str(err).lower()
+
+
+def _create_checkout_session_compat(stripe, kwargs: Dict[str, Any], idem_key: str):
+    """
+    Create a Checkout Session with Stripe's Adaptive Pricing disabled so
+    international customers see USD only (no local-currency picker).
+    Falls back without the parameter for accounts/API versions that don't
+    recognise it (different idempotency key: Stripe records failed
+    parameter sets against the original key).
+    """
+    try:
+        return stripe.checkout.Session.create(
+            **kwargs,
+            adaptive_pricing={"enabled": False},
+            idempotency_key=idem_key,
+        )
+    except Exception as e:
+        msg = str(e).lower()
+        if "adaptive_pricing" in msg and ("unknown parameter" in msg or "received unknown" in msg):
+            return stripe.checkout.Session.create(
+                **kwargs,
+                idempotency_key=f"{idem_key}_nap",
+            )
+        raise
 
 
 def _line_items_for_plan(
@@ -480,14 +531,14 @@ def checkout_create():
     except Exception as e:
         return _json_error("invalid_request", 400, detail=str(e))
 
-    base = _base_url()
+    base = _frontend_base_url()
     success_url = _get_env(
         "STRIPE_SUCCESS_URL",
-        f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
+        f"{base}/billing?checkout=success",
     )
     cancel_url = _get_env(
         "STRIPE_CANCEL_URL",
-        f"{base}/billing/cancel",
+        f"{base}/billing",
     )
 
     allow_promo = _truthy(
@@ -538,10 +589,10 @@ def checkout_create():
             # stale-price failure uses different line items, and Stripe
             # rejects reusing a key with changed parameters.
             key_suffix = "-".join(str(li["price"])[-8:] for li in items)
-            return stripe.checkout.Session.create(
-                **session_kwargs,
-                line_items=items,
-                idempotency_key=(
+            return _create_checkout_session_compat(
+                stripe,
+                {**session_kwargs, "line_items": items},
+                (
                     "ledgerhaul_checkout_company_"
                     f"{company_id}_plan_{plan_key}_emp_{employees}_{key_suffix}"
                 ),
@@ -618,14 +669,14 @@ def checkout_link():
     customer_email = (request.args.get("email") or "").strip() or None
     customer_name = (request.args.get("name") or "").strip() or None
 
-    base = _base_url()
+    base = _frontend_base_url()
     success_url = _get_env(
         "STRIPE_SUCCESS_URL",
-        f"{base}/billing/success?session_id={{CHECKOUT_SESSION_ID}}",
+        f"{base}/billing?checkout=success",
     )
     cancel_url = _get_env(
         "STRIPE_CANCEL_URL",
-        f"{base}/billing/cancel",
+        f"{base}/billing",
     )
 
     try:
@@ -639,22 +690,25 @@ def checkout_link():
 
         def _create_session(items: List[Dict[str, Any]]):
             key_suffix = "-".join(str(li["price"])[-8:] for li in items)
-            return stripe.checkout.Session.create(
-                mode="subscription",
-                line_items=items,
-                success_url=success_url,
-                cancel_url=cancel_url,
-                allow_promotion_codes=_truthy(
-                    _get_env("STRIPE_CHECKOUT_ALLOW_PROMO_CODES", "0")
-                ),
-                customer=customer_id,
-                metadata={
-                    "company_id": str(company_id),
-                    "plan": plan_key,
-                    "employees": str(employees),
-                    "app": "LedgerHaul",
+            return _create_checkout_session_compat(
+                stripe,
+                {
+                    "mode": "subscription",
+                    "line_items": items,
+                    "success_url": success_url,
+                    "cancel_url": cancel_url,
+                    "allow_promotion_codes": _truthy(
+                        _get_env("STRIPE_CHECKOUT_ALLOW_PROMO_CODES", "0")
+                    ),
+                    "customer": customer_id,
+                    "metadata": {
+                        "company_id": str(company_id),
+                        "plan": plan_key,
+                        "employees": str(employees),
+                        "app": "LedgerHaul",
+                    },
                 },
-                idempotency_key=(
+                (
                     "ledgerhaul_checkoutlink_company_"
                     f"{company_id}_plan_{plan_key}_emp_{employees}_{key_suffix}"
                 ),
@@ -726,14 +780,14 @@ def create_checkout_session():
     )
     customer_name = customer_name.strip() or None
 
-    base = _base_url()
+    base = _frontend_base_url()
     success_url = _get_env(
         "STRIPE_SUCCESS_URL",
         f"{base}/dashboard?checkout=success",
     )
     cancel_url = _get_env(
         "STRIPE_CANCEL_URL",
-        f"{base}/billing?checkout=cancel",
+        f"{base}/billing",
     )
 
     allow_promo = _truthy(
@@ -853,14 +907,14 @@ def create_one_time_checkout_session():
     )
     customer_name = customer_name.strip() or None
 
-    base = _base_url()
+    base = _frontend_base_url()
     success_url = _get_env(
         "STRIPE_SUCCESS_URL",
         f"{base}/dashboard?checkout=success",
     )
     cancel_url = _get_env(
         "STRIPE_CANCEL_URL",
-        f"{base}/billing?checkout=cancel",
+        f"{base}/billing",
     )
 
     automatic_tax = _truthy(
