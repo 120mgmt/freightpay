@@ -99,6 +99,25 @@ def _extract_company_id() -> Optional[int]:
     return None
 
 
+def _company_plan_override() -> Optional[str]:
+    """companies.plan_override for the requesting company, if any."""
+    cid = _extract_company_id()
+    if cid is None:
+        return None
+    try:
+        from models.company import Company
+
+        company = db.session.get(Company, cid)
+        val = (getattr(company, "plan_override", None) or "").strip().lower()
+        return val or None
+    except Exception:
+        try:
+            db.session.rollback()
+        except Exception:
+            pass
+        return None
+
+
 def _extract_customer_id() -> Optional[str]:
     cid = request.headers.get("X-Customer-Id")
     if isinstance(cid, str) and cid.strip():
@@ -563,6 +582,25 @@ def require_active_subscription(_fn: Optional[F] = None, *, feature: Optional[st
         def wrapper(*args: Any, **kwargs: Any) -> Any:
             if _allow_when_gating_off() or _bypass_enabled():
                 return fn(*args, **kwargs)
+
+            # Manual plan grant by a platform admin (companies.plan_override)
+            # takes precedence over Stripe entirely. Only payroll routes use
+            # this decorator, so: payroll-capable plans pass, bookkeeping-only
+            # is refused with a clear message.
+            override = _company_plan_override()
+            if override:
+                if override in ("combo", "payroll_only"):
+                    return fn(*args, **kwargs)
+                return (
+                    jsonify(
+                        {
+                            "error": "plan_feature_unavailable",
+                            "message": "Your assigned plan does not include payroll.",
+                            "plan": override,
+                        }
+                    ),
+                    402,
+                )
 
             # HARDENED: never allow unhandled exceptions to become HTML 500
             try:

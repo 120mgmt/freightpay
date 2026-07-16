@@ -371,6 +371,13 @@ def patch_company(company_id: int):
     if "name" in data and str(data["name"]).strip():
         company.name = str(data["name"]).strip()
 
+    if "plan_override" in data:
+        val = (str(data["plan_override"] or "")).strip().lower()
+        allowed = {"combo", "payroll_only", "bookkeeping_only"}
+        if val and val not in allowed:
+            return jsonify({"error": "INVALID_PLAN", "allowed": sorted(allowed)}), 400
+        company.plan_override = val or None
+
     s.commit()
     return jsonify({"status": "updated", "company": company.to_dict()}), 200
 
@@ -459,6 +466,35 @@ def patch_user(user_id: int):
 
     s.commit()
     return jsonify({"status": "updated", "user": _user_row(user)}), 200
+
+
+@admin_portal_bp.delete("/users/<int:user_id>")
+@platform_admin_required
+def delete_user(user_id: int):
+    """
+    Permanently removes the account. The email becomes free to register
+    again (suspension is the reversible alternative — PATCH is_active).
+    Guards: cannot delete yourself; cannot delete another platform admin
+    (revoke their admin flag first).
+    """
+    s = db.session
+    user = s.get(User, user_id)
+    if not user:
+        return jsonify({"error": "USER_NOT_FOUND"}), 404
+
+    me: User = request.platform_admin  # type: ignore[attr-defined]
+    if user.id == me.id:
+        return jsonify({"error": "CANNOT_DELETE_SELF"}), 400
+    if user_is_platform_admin(user):
+        return jsonify({"error": "CANNOT_DELETE_PLATFORM_ADMIN", "hint": "Revoke their platform admin flag first."}), 400
+
+    deleted_email = user.email
+    # Raw SQL: DB-level ON DELETE CASCADE handles children. ORM delete would
+    # walk relationships and trips on legacy model/table drift
+    # (legal_acceptances) unrelated to this operation.
+    s.execute(text("DELETE FROM users WHERE id = :uid"), {"uid": user_id})
+    s.commit()
+    return jsonify({"status": "deleted", "email": deleted_email}), 200
 
 
 @admin_portal_bp.post("/users/<int:user_id>/reset-link")

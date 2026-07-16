@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Loader2, Building2, Users as UsersIcon, ShieldAlert, RefreshCw,
   Search, CheckCircle2, XCircle, KeyRound, ChevronLeft, ChevronRight,
-  ShieldCheck, ShieldOff,
+  ShieldCheck, ShieldOff, Trash2,
 } from "lucide-react";
 
 /* ---------- types ---------- */
@@ -36,6 +36,7 @@ interface AdminCompany {
   name: string;
   slug: string;
   stripe_customer_id?: string | null;
+  plan_override?: string | null;
   is_active: boolean;
   created_at?: string | null;
   user_count?: number;
@@ -269,6 +270,28 @@ const Admin = () => {
     );
     setBusyUser(null);
     if (data) loadUsers(userPage, userQuery);
+  };
+
+  const deleteUser = async (u: AdminUser) => {
+    const sure = window.confirm(
+      `Permanently DELETE ${u.email}?\n\nTheir account is removed and the email becomes free to register again. ` +
+      `(To block them but keep the account, use Disable instead.)`
+    );
+    if (!sure) return;
+    setBusyUser(u.id);
+    const data = await guard(await apiFetch(`/api/admin/users/${u.id}`, { method: "DELETE" }));
+    setBusyUser(null);
+    if (data) loadUsers(userPage, userQuery);
+  };
+
+  const setPlanOverride = async (companyId: number, plan: string) => {
+    const data = await guard(
+      await apiFetch(`/api/admin/companies/${companyId}`, {
+        method: "PATCH",
+        body: JSON.stringify({ plan_override: plan }),
+      })
+    );
+    if (data) openCompany(companyId);
   };
 
   const genResetLink = async (u: AdminUser) => {
@@ -514,10 +537,30 @@ const Admin = () => {
                         Subscription: <span className="font-semibold capitalize">{detail.subscription.status}</span>
                         {detail.subscription.plan && ` · ${PLAN_LABEL[detail.subscription.plan] || detail.subscription.plan}`}
                         {detail.subscription.current_period_end && ` · renews ${fmtDate(detail.subscription.current_period_end)}`}
+                        {detail.company.plan_override && (
+                          <span className="ml-2 text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-primary/10 text-primary">
+                            Manual grant: {PLAN_LABEL[detail.company.plan_override] || detail.company.plan_override}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                  <Button variant="outline" size="sm" onClick={() => setDetail(null)}>Close</Button>
+                  <div className="flex items-center gap-2">
+                    <label className="text-xs text-muted-foreground" title="Grant plan access without a Stripe subscription (comped account / offline payment). 'None' means access is controlled by Stripe.">
+                      Manual plan
+                    </label>
+                    <select
+                      value={detail.company.plan_override || ""}
+                      onChange={(e) => setPlanOverride(detail.company.id, e.target.value)}
+                      className="rounded-md border border-border bg-card px-2 py-1 text-xs outline-none focus:border-primary"
+                    >
+                      <option value="">None (Stripe controls)</option>
+                      <option value="combo">Combo</option>
+                      <option value="payroll_only">Payroll Only</option>
+                      <option value="bookkeeping_only">Bookkeeping Only</option>
+                    </select>
+                    <Button variant="outline" size="sm" onClick={() => setDetail(null)}>Close</Button>
+                  </div>
                 </div>
 
                 <div className="grid md:grid-cols-2 gap-6">
@@ -630,11 +673,19 @@ const Admin = () => {
                             <KeyRound size={13} />
                           </Button>
                           <Button
-                            variant="outline" size="sm" disabled={busyUser === u.id}
-                            className={u.is_active ? "text-destructive border-destructive/40" : "text-primary border-primary/40"}
+                            variant="outline" size="sm" className="mr-2" disabled={busyUser === u.id}
+                            title={u.is_active ? "Suspend (reversible — account kept, sign-in blocked)" : "Re-enable account"}
                             onClick={() => patchUser(u, { is_active: !u.is_active })}
                           >
                             {busyUser === u.id ? <Loader2 size={13} className="animate-spin" /> : u.is_active ? "Disable" : "Enable"}
+                          </Button>
+                          <Button
+                            variant="outline" size="sm" disabled={busyUser === u.id}
+                            className="text-destructive border-destructive/40"
+                            title="Delete permanently (frees the email for re-registration)"
+                            onClick={() => deleteUser(u)}
+                          >
+                            <Trash2 size={13} />
                           </Button>
                         </td>
                       </tr>
