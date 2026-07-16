@@ -384,10 +384,24 @@ def billing_debug_prices():
     secret = _get_env("STRIPE_SECRET_KEY") or ""
     payload: Dict[str, Any] = {
         "stripe_mode": "live" if secret.startswith("sk_live_") else ("test" if secret.startswith("sk_test_") else "unset"),
+        # First 17 chars are just the key prefix + account id (public info,
+        # visible in any pk_ key); last 4 match what Stripe's dashboard shows.
+        # The secret middle is never exposed.
+        "secret_key_hint": (f"{secret[:17]}...{secret[-4:]}" if len(secret) > 25 else "unset_or_malformed"),
         "pricing_from_env": _pricing_from_env(),
     }
     try:
         stripe = _stripe_client()
+        try:
+            acct = stripe.Account.retrieve()
+            profile = acct.get("business_profile") or {}
+            dash = ((acct.get("settings") or {}).get("dashboard") or {})
+            payload["stripe_account"] = {
+                "id": acct.get("id"),
+                "name": profile.get("name") or dash.get("display_name"),
+            }
+        except Exception as e:
+            payload["stripe_account_error"] = str(e)
         payload["pricing_from_catalog"] = _pricing_from_catalog(stripe, force=True)
         payload["pricing_effective"] = _effective_pricing(stripe)
     except Exception as e:
