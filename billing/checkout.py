@@ -238,18 +238,25 @@ def _pricing_from_catalog(stripe, force: bool = False) -> Dict[str, Dict[str, Op
 
 
 def _effective_pricing(stripe, force_catalog: bool = False) -> Dict[str, Dict[str, Optional[str]]]:
-    """Env values win where present; Stripe catalog fills every gap."""
+    """
+    The Stripe catalog is the source of truth — whatever the connected
+    account's products say right now wins. Env vars only fill plans the
+    catalog could not resolve (missing/renamed product): they hold stale
+    ids from earlier configurations too easily to be trusted first.
+    """
     env_pricing = _pricing_from_env()
     catalog = _pricing_from_catalog(stripe, force=force_catalog)
     merged: Dict[str, Dict[str, Optional[str]]] = {}
     for plan in ("combo", "payroll_only", "bookkeeping_only"):
         env_cfg = env_pricing.get(plan) or {}
         cat_cfg = catalog.get(plan) or {}
-        base = env_cfg.get("base_price_id")
-        per_emp = env_cfg.get("per_employee_price_id")
+        env_base = env_cfg.get("base_price_id")
+        env_per_emp = env_cfg.get("per_employee_price_id")
         merged[plan] = {
-            "base_price_id": base if (base or "").startswith("price_") else cat_cfg.get("base_price_id"),
-            "per_employee_price_id": per_emp if (per_emp or "").startswith("price_") else cat_cfg.get("per_employee_price_id"),
+            "base_price_id": cat_cfg.get("base_price_id")
+            or (env_base if (env_base or "").startswith("price_") else None),
+            "per_employee_price_id": cat_cfg.get("per_employee_price_id")
+            or (env_per_emp if (env_per_emp or "").startswith("price_") else None),
         }
     return merged
 
@@ -263,7 +270,7 @@ def _params_signature(params: Dict[str, Any]) -> str:
     import json
 
     blob = json.dumps(params, sort_keys=True, default=str)
-    return hashlib.sha1(blob.encode()).hexdigest()[:10]
+    return hashlib.sha256(blob.encode()).hexdigest()[:10]
 
 
 def _create_checkout_session_compat(stripe, kwargs: Dict[str, Any], idem_key: str):
