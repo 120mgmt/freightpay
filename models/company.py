@@ -27,6 +27,11 @@ class Company(db.Model):
     # Optional forward-compatible bridge to Stripe
     stripe_customer_id = Column(String(255), nullable=True, index=True)
 
+    # Manual plan grant by a platform admin (combo | payroll_only |
+    # bookkeeping_only). When set, paid features unlock without a Stripe
+    # subscription — used for comped accounts, offline payments, testing.
+    plan_override = Column(String(32), nullable=True)
+
     is_active = Column(Boolean, nullable=False, default=True)
 
     created_at = Column(DateTime, nullable=False, server_default=func.now())
@@ -38,6 +43,7 @@ class Company(db.Model):
             "name": self.name,
             "slug": self.slug,
             "stripe_customer_id": self.stripe_customer_id,
+            "plan_override": self.plan_override,
             "is_active": bool(self.is_active),
             "created_at": self.created_at.isoformat() if isinstance(self.created_at, datetime) else None,
             "updated_at": self.updated_at.isoformat() if isinstance(self.updated_at, datetime) else None,
