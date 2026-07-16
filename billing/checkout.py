@@ -258,26 +258,38 @@ def _is_no_such_price_error(err: Exception) -> bool:
     return "no such price" in str(err).lower()
 
 
+def _params_signature(params: Dict[str, Any]) -> str:
+    import hashlib
+    import json
+
+    blob = json.dumps(params, sort_keys=True, default=str)
+    return hashlib.sha1(blob.encode()).hexdigest()[:10]
+
+
 def _create_checkout_session_compat(stripe, kwargs: Dict[str, Any], idem_key: str):
     """
     Create a Checkout Session with Stripe's Adaptive Pricing disabled so
     international customers see USD only (no local-currency picker).
     Falls back without the parameter for accounts/API versions that don't
-    recognise it (different idempotency key: Stripe records failed
-    parameter sets against the original key).
+    recognise it.
+
+    The idempotency key embeds a hash of the exact parameters sent: Stripe
+    permanently binds a key to its first parameter set, so any change
+    (new URLs, new flags, retry without adaptive_pricing) must produce a
+    fresh key or Stripe rejects the request for up to 24 hours.
     """
+    params = {**kwargs, "adaptive_pricing": {"enabled": False}}
     try:
         return stripe.checkout.Session.create(
-            **kwargs,
-            adaptive_pricing={"enabled": False},
-            idempotency_key=idem_key,
+            **params,
+            idempotency_key=f"{idem_key}_{_params_signature(params)}",
         )
     except Exception as e:
         msg = str(e).lower()
         if "adaptive_pricing" in msg and ("unknown parameter" in msg or "received unknown" in msg):
             return stripe.checkout.Session.create(
                 **kwargs,
-                idempotency_key=f"{idem_key}_nap",
+                idempotency_key=f"{idem_key}_{_params_signature(kwargs)}",
             )
         raise
 
