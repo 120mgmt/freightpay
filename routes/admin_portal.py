@@ -55,21 +55,38 @@ def _first_user_id() -> Optional[int]:
         return None
 
 
+def _db_admin_exists() -> bool:
+    """True if any account has been granted platform admin in the database."""
+    try:
+        return bool(
+            db.session.execute(
+                select(func.count(User.id)).where(User.is_platform_admin.is_(True))
+            ).scalar()
+        )
+    except Exception:
+        db.session.rollback()
+        return False
+
+
 def user_is_platform_admin(user: Optional[User]) -> bool:
     """
-    A user is a platform admin if their email is in PLATFORM_ADMIN_EMAILS.
+    Platform-admin access, checked in order:
 
-    Bootstrap fallback: if that env var is unset/empty (common right after
-    launch, or when the hosting dashboard fails to persist the value), the
-    very first registered account — the platform owner — is treated as the
-    admin so the portal is never permanently locked out. Setting
-    PLATFORM_ADMIN_EMAILS later takes precedence and disables the fallback.
+    1. Email listed in PLATFORM_ADMIN_EMAILS (env override, if set).
+    2. users.is_platform_admin flag — the primary, DB-backed grant managed
+       from the admin portal's Users tab.
+    3. Bootstrap: while NO account has the DB flag yet (fresh deploy), the
+       first-registered account is treated as admin so the owner can get in
+       and grant flags. Once any DB grant exists, the bootstrap turns off.
     """
     if not user:
         return False
-    configured = _platform_admin_emails()
-    if configured:
-        return (user.email or "").strip().lower() in configured
+    if is_platform_admin_email(user.email):
+        return True
+    if bool(getattr(user, "is_platform_admin", False)):
+        return True
+    if _db_admin_exists():
+        return False
     return user.id is not None and user.id == _first_user_id()
 
 
@@ -123,10 +140,12 @@ def whoami():
             "first_user_id": _first_user_id(),
             "is_platform_admin": user_is_platform_admin(user),
             "granted_via": (
-                "env_list" if configured and is_platform_admin_email(user.email)
-                else "first_user_fallback" if not configured and user_is_platform_admin(user)
+                "env_list" if is_platform_admin_email(user.email)
+                else "db_flag" if bool(getattr(user, "is_platform_admin", False))
+                else "first_user_bootstrap" if user_is_platform_admin(user)
                 else "none"
             ),
+            "db_admin_exists": _db_admin_exists(),
             "platform_admin_emails_configured": configured,
             "platform_admin_emails_raw_env_set": bool(os.getenv("PLATFORM_ADMIN_EMAILS")),
         }
@@ -420,6 +439,23 @@ def patch_user(user_id: int):
 
     if "email_verified" in data:
         user.email_verified = bool(data["email_verified"])
+
+    if "is_platform_admin" in data:
+        grant = bool(data["is_platform_admin"])
+        if user.id == me.id and not grant:
+            # No self-lockout: another platform admin must revoke you.
+            return jsonify({"error": "CANNOT_REVOKE_OWN_PLATFORM_ADMIN"}), 400
+        user.is_platform_admin = grant
+        # If the actor is only an admin via the first-user bootstrap (no env
+        # entry, no DB flag) and grants someone else, the bootstrap would
+        # switch off and lock the actor out — persist their grant too.
+        if (
+            grant
+            and user.id != me.id
+            and not is_platform_admin_email(me.email)
+            and not bool(getattr(me, "is_platform_admin", False))
+        ):
+            me.is_platform_admin = True
 
     s.commit()
     return jsonify({"status": "updated", "user": _user_row(user)}), 200
