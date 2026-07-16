@@ -12,7 +12,8 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional, Tuple
+import time
+from typing import Any, Dict, List, Optional, Tuple
 
 from flask import Blueprint, jsonify, redirect, request
 from flask_jwt_extended import verify_jwt_in_request, get_jwt_identity
@@ -142,6 +143,115 @@ def _pricing_from_env() -> Dict[str, Dict[str, Optional[str]]]:
     }
 
 
+# ------------------------------------------------------------------
+# Stripe catalog auto-discovery
+#
+# The hosting dashboard has repeatedly failed to persist STRIPE_*_PRICE_ID
+# env vars into the running process, leaving checkout pointed at stale
+# price ids. Rather than depend on env vars at all, resolve the plans
+# directly from the connected Stripe account's own product catalog:
+# active recurring prices whose product name contains "combo", "payroll"
+# or "bookkeep". Env vars, when present AND valid, still win.
+# ------------------------------------------------------------------
+_CATALOG_TTL_SECONDS = 600
+_catalog_cache: Dict[str, Any] = {"at": 0.0, "pricing": None}
+
+
+def _plan_for_product_name(name: str) -> Optional[str]:
+    n = (name or "").lower()
+    if "combo" in n:
+        return "combo"
+    if "payroll" in n:
+        return "payroll_only"
+    if "bookkeep" in n:
+        return "bookkeeping_only"
+    return None
+
+
+def _pricing_from_catalog(stripe, force: bool = False) -> Dict[str, Dict[str, Optional[str]]]:
+    """
+    Resolve plan prices from Stripe's live catalog. Cached for 10 minutes.
+    Per plan: base = highest-amount active recurring price (newest wins on
+    ties), per-employee = the cheaper second price when one exists.
+    """
+    now = time.monotonic()
+    cached = _catalog_cache.get("pricing")
+    if not force and cached and (now - _catalog_cache["at"]) < _CATALOG_TTL_SECONDS:
+        return cached
+
+    buckets: Dict[str, List[Any]] = {}
+    prices = stripe.Price.list(active=True, limit=100, expand=["data.product"])
+    for p in prices.auto_paging_iter():
+        if not p.get("recurring"):
+            continue
+        product = p.get("product") or {}
+        if isinstance(product, str) or not product.get("active", True):
+            continue
+        plan = _plan_for_product_name(product.get("name") or "")
+        if plan:
+            buckets.setdefault(plan, []).append(p)
+
+    pricing: Dict[str, Dict[str, Optional[str]]] = {
+        "combo": {"base_price_id": None, "per_employee_price_id": None},
+        "payroll_only": {"base_price_id": None, "per_employee_price_id": None},
+        "bookkeeping_only": {"base_price_id": None, "per_employee_price_id": None},
+    }
+    for plan, plist in buckets.items():
+        plist.sort(
+            key=lambda p: (int(p.get("unit_amount") or 0), int(p.get("created") or 0)),
+            reverse=True,
+        )
+        pricing[plan]["base_price_id"] = plist[0]["id"]
+        if plan != "bookkeeping_only" and len(plist) > 1:
+            pricing[plan]["per_employee_price_id"] = plist[-1]["id"]
+
+    _catalog_cache["at"] = now
+    _catalog_cache["pricing"] = pricing
+    return pricing
+
+
+def _effective_pricing(stripe, force_catalog: bool = False) -> Dict[str, Dict[str, Optional[str]]]:
+    """Env values win where present; Stripe catalog fills every gap."""
+    env_pricing = _pricing_from_env()
+    catalog = _pricing_from_catalog(stripe, force=force_catalog)
+    merged: Dict[str, Dict[str, Optional[str]]] = {}
+    for plan in ("combo", "payroll_only", "bookkeeping_only"):
+        env_cfg = env_pricing.get(plan) or {}
+        cat_cfg = catalog.get(plan) or {}
+        base = env_cfg.get("base_price_id")
+        per_emp = env_cfg.get("per_employee_price_id")
+        merged[plan] = {
+            "base_price_id": base if (base or "").startswith("price_") else cat_cfg.get("base_price_id"),
+            "per_employee_price_id": per_emp if (per_emp or "").startswith("price_") else cat_cfg.get("per_employee_price_id"),
+        }
+    return merged
+
+
+def _is_no_such_price_error(err: Exception) -> bool:
+    return "no such price" in str(err).lower()
+
+
+def _line_items_for_plan(
+    pricing: Dict[str, Dict[str, Optional[str]]],
+    plan_key: str,
+    employees: int,
+) -> List[Dict[str, Any]]:
+    cfg = pricing.get(plan_key) or {}
+    base = cfg.get("base_price_id")
+    if not base or not str(base).startswith("price_"):
+        raise RuntimeError(
+            f"No active Stripe price found for plan '{plan_key}'. Create an "
+            "active recurring product in Stripe whose name contains "
+            "Combo/Payroll/Bookkeeping, or set "
+            f"{_env_name_for_plan_base(plan_key)}."
+        )
+    items: List[Dict[str, Any]] = [{"price": base, "quantity": 1}]
+    per_emp = cfg.get("per_employee_price_id")
+    if per_emp and employees > 0:
+        items.append({"price": per_emp, "quantity": employees})
+    return items
+
+
 def _validate_price_id(pid: Optional[str], env_name: str) -> str:
     if not pid:
         raise RuntimeError(f"Missing {env_name} env var")
@@ -196,26 +306,38 @@ def billing_health():
 @billing_bp.get("/debug-prices")
 def billing_debug_prices():
     """
-    Temporary diagnostic: shows exactly which Stripe price IDs this running
-    process currently has loaded from its environment. Price IDs are not
-    secret (Stripe secret/webhook keys are never exposed here).
+    Temporary diagnostic: shows the env-configured price IDs, what the
+    Stripe catalog auto-discovery resolves, and the effective merge that
+    checkout will actually use. Price IDs are not secret (Stripe
+    secret/webhook keys are never exposed here).
     """
     secret = _get_env("STRIPE_SECRET_KEY") or ""
-    return jsonify(
-        {
-            "stripe_mode": "live" if secret.startswith("sk_live_") else ("test" if secret.startswith("sk_test_") else "unset"),
-            "pricing": _pricing_from_env(),
-        }
-    ), 200
+    payload: Dict[str, Any] = {
+        "stripe_mode": "live" if secret.startswith("sk_live_") else ("test" if secret.startswith("sk_test_") else "unset"),
+        "pricing_from_env": _pricing_from_env(),
+    }
+    try:
+        stripe = _stripe_client()
+        payload["pricing_from_catalog"] = _pricing_from_catalog(stripe, force=True)
+        payload["pricing_effective"] = _effective_pricing(stripe)
+    except Exception as e:
+        payload["catalog_error"] = str(e)
+    return jsonify(payload), 200
 
 
 def _plan_key_for_price(price_id: str) -> Optional[str]:
     if not price_id:
         return None
-    pricing = _pricing_from_env()
-    for key, cfg in pricing.items():
-        if price_id in {cfg.get("base_price_id"), cfg.get("per_employee_price_id")}:
-            return key
+    # Check env-configured ids first, then the auto-discovered catalog.
+    candidates = [_pricing_from_env()]
+    try:
+        candidates.append(_pricing_from_catalog(_stripe_client()))
+    except Exception:
+        pass
+    for pricing in candidates:
+        for key, cfg in pricing.items():
+            if price_id in {cfg.get("base_price_id"), cfg.get("per_employee_price_id")}:
+                return key
     return None
 
 
@@ -384,27 +506,6 @@ def checkout_create():
     try:
         stripe = _stripe_client()
 
-        base_price_env = _env_name_for_plan_base(plan_key)
-        base_price_id = _validate_price_id(
-            pricing[plan_key]["base_price_id"],
-            base_price_env,
-        )
-
-        line_items: list[dict[str, Any]] = [
-            {"price": base_price_id, "quantity": 1}
-        ]
-
-        per_emp_pid = pricing[plan_key].get("per_employee_price_id")
-        if per_emp_pid and employees > 0:
-            per_emp_env = _env_name_for_plan_per_emp(plan_key)
-            per_emp_pid = _validate_price_id(
-                per_emp_pid,
-                per_emp_env,
-            )
-            line_items.append(
-                {"price": per_emp_pid, "quantity": employees}
-            )
-
         customer_id = _resolve_company_customer_id(
             company_id=company_id,
             email=customer_email,
@@ -413,7 +514,6 @@ def checkout_create():
 
         session_kwargs: Dict[str, Any] = {
             "mode": "subscription",
-            "line_items": line_items,
             "success_url": success_url,
             "cancel_url": cancel_url,
             "allow_promotion_codes": allow_promo,
@@ -433,13 +533,36 @@ def checkout_create():
         if tax_id_collection:
             session_kwargs["tax_id_collection"] = {"enabled": True}
 
-        session = stripe.checkout.Session.create(
-            **session_kwargs,
-            idempotency_key=(
-                "ledgerhaul_checkout_company_"
-                f"{company_id}_plan_{plan_key}_emp_{employees}"
-            ),
+        def _create_session(items: List[Dict[str, Any]]):
+            # Include the price ids in the idempotency key: a retry after a
+            # stale-price failure uses different line items, and Stripe
+            # rejects reusing a key with changed parameters.
+            key_suffix = "-".join(str(li["price"])[-8:] for li in items)
+            return stripe.checkout.Session.create(
+                **session_kwargs,
+                line_items=items,
+                idempotency_key=(
+                    "ledgerhaul_checkout_company_"
+                    f"{company_id}_plan_{plan_key}_emp_{employees}_{key_suffix}"
+                ),
+            )
+
+        line_items = _line_items_for_plan(
+            _effective_pricing(stripe), plan_key, employees
         )
+        try:
+            session = _create_session(line_items)
+        except Exception as first_err:
+            if not _is_no_such_price_error(first_err):
+                raise
+            # Env var pointed at a stale/wrong-mode price. Re-resolve from
+            # the live Stripe catalog (env ignored) and retry once.
+            catalog_only = _pricing_from_catalog(stripe, force=True)
+            retry_items = _line_items_for_plan(catalog_only, plan_key, employees)
+            if retry_items == line_items:
+                raise
+            session = _create_session(retry_items)
+
         return jsonify(
             {
                 "checkout_url": session.get("url"),
@@ -508,53 +631,49 @@ def checkout_link():
     try:
         stripe = _stripe_client()
 
-        base_price_env = _env_name_for_plan_base(plan_key)
-        base_price_id = _validate_price_id(
-            pricing[plan_key]["base_price_id"],
-            base_price_env,
-        )
-
-        line_items: list[dict[str, Any]] = [
-            {"price": base_price_id, "quantity": 1}
-        ]
-
-        per_emp_pid = pricing[plan_key].get("per_employee_price_id")
-        if per_emp_pid and employees > 0:
-            per_emp_env = _env_name_for_plan_per_emp(plan_key)
-            per_emp_pid = _validate_price_id(
-                per_emp_pid,
-                per_emp_env,
-            )
-            line_items.append(
-                {"price": per_emp_pid, "quantity": employees}
-            )
-
         customer_id = _resolve_company_customer_id(
             company_id=company_id,
             email=customer_email,
             name=customer_name,
         )
 
-        session = stripe.checkout.Session.create(
-            mode="subscription",
-            line_items=line_items,
-            success_url=success_url,
-            cancel_url=cancel_url,
-            allow_promotion_codes=_truthy(
-                _get_env("STRIPE_CHECKOUT_ALLOW_PROMO_CODES", "0")
-            ),
-            customer=customer_id,
-            metadata={
-                "company_id": str(company_id),
-                "plan": plan_key,
-                "employees": str(employees),
-                "app": "LedgerHaul",
-            },
-            idempotency_key=(
-                "ledgerhaul_checkoutlink_company_"
-                f"{company_id}_plan_{plan_key}_emp_{employees}"
-            ),
+        def _create_session(items: List[Dict[str, Any]]):
+            key_suffix = "-".join(str(li["price"])[-8:] for li in items)
+            return stripe.checkout.Session.create(
+                mode="subscription",
+                line_items=items,
+                success_url=success_url,
+                cancel_url=cancel_url,
+                allow_promotion_codes=_truthy(
+                    _get_env("STRIPE_CHECKOUT_ALLOW_PROMO_CODES", "0")
+                ),
+                customer=customer_id,
+                metadata={
+                    "company_id": str(company_id),
+                    "plan": plan_key,
+                    "employees": str(employees),
+                    "app": "LedgerHaul",
+                },
+                idempotency_key=(
+                    "ledgerhaul_checkoutlink_company_"
+                    f"{company_id}_plan_{plan_key}_emp_{employees}_{key_suffix}"
+                ),
+            )
+
+        line_items = _line_items_for_plan(
+            _effective_pricing(stripe), plan_key, employees
         )
+        try:
+            session = _create_session(line_items)
+        except Exception as first_err:
+            if not _is_no_such_price_error(first_err):
+                raise
+            catalog_only = _pricing_from_catalog(stripe, force=True)
+            retry_items = _line_items_for_plan(catalog_only, plan_key, employees)
+            if retry_items == line_items:
+                raise
+            session = _create_session(retry_items)
+
         return redirect(session.get("url"), code=302)
 
     except Exception as e:
