@@ -96,8 +96,14 @@ const statusPill = (ok: boolean, yes: string, no: string) => (
   </span>
 );
 
-const TABS = ["Overview", "Companies", "Users", "Payroll", "Subscriptions"] as const;
+const TABS = ["Overview", "Companies", "Users", "Payroll", "Subscriptions", "Settings"] as const;
 type Tab = (typeof TABS)[number];
+
+interface PlatformSettings {
+  stripe_secret_key?: { hint: string; source: string };
+  stripe_webhook_secret?: { hint: string; source: string };
+  stripe_identity?: { ok: boolean; account_id?: string; account_name?: string; error?: string };
+}
 
 /* ---------- page ---------- */
 
@@ -137,6 +143,14 @@ const Admin = () => {
   /* subscriptions */
   const [subs, setSubs] = useState<AdminSub[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(false);
+
+  /* platform settings */
+  const [settings, setSettings] = useState<PlatformSettings | null>(null);
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [newSecretKey, setNewSecretKey] = useState("");
+  const [newWebhookSecret, setNewWebhookSecret] = useState("");
+  const [settingsMsg, setSettingsMsg] = useState("");
 
   const PER_PAGE = 25;
 
@@ -228,12 +242,54 @@ const Admin = () => {
     setLoadingSubs(false);
   }, []);
 
+  const loadSettings = useCallback(async () => {
+    setLoadingSettings(true);
+    setError("");
+    try {
+      const data = await guard(await apiFetch("/api/admin/platform-settings"));
+      if (data) setSettings(data);
+    } catch {
+      setError("Network error.");
+    }
+    setLoadingSettings(false);
+  }, []);
+
+  const saveSettings = async () => {
+    const body: Record<string, string> = {};
+    if (newSecretKey.trim()) body.stripe_secret_key = newSecretKey.trim();
+    if (newWebhookSecret.trim()) body.stripe_webhook_secret = newWebhookSecret.trim();
+    if (!Object.keys(body).length) return;
+    setSavingSettings(true);
+    setSettingsMsg("");
+    setError("");
+    try {
+      const res = await apiFetch("/api/admin/platform-settings", { method: "POST", body: JSON.stringify(body) });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setSettingsMsg(
+          data.stripe_identity?.account_name
+            ? `Saved — connected to ${data.stripe_identity.account_name} (${data.stripe_identity.account_id}). Applied instantly, no redeploy needed.`
+            : "Saved and applied instantly."
+        );
+        setNewSecretKey("");
+        setNewWebhookSecret("");
+        loadSettings();
+      } else {
+        setError(data.detail || data.error || "Could not save settings.");
+      }
+    } catch {
+      setError("Network error.");
+    }
+    setSavingSettings(false);
+  };
+
   useEffect(() => {
     if (tab === "Overview") loadOverview();
     if (tab === "Companies") loadCompanies(companyPage, companyQuery);
     if (tab === "Users") loadUsers(userPage, userQuery);
     if (tab === "Payroll") loadRuns(runPage);
     if (tab === "Subscriptions") loadSubs();
+    if (tab === "Settings") loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, companyPage, userPage, runPage]);
 
@@ -391,6 +447,7 @@ const Admin = () => {
               if (tab === "Users") loadUsers(userPage, userQuery);
               if (tab === "Payroll") loadRuns(runPage);
               if (tab === "Subscriptions") loadSubs();
+              if (tab === "Settings") loadSettings();
             }}
           >
             <RefreshCw size={14} className="mr-1" /> Refresh
@@ -777,6 +834,81 @@ const Admin = () => {
                     )}
                   </tbody>
                 </table>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ---------- SETTINGS ---------- */}
+        {tab === "Settings" && (
+          <>
+            {loadingSettings && spinner}
+            {!loadingSettings && (
+              <div className="max-w-2xl space-y-6">
+                <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+                  <h2 className="text-lg font-bold mb-1">Stripe Connection</h2>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Keys saved here are stored in the database and applied to the live backend
+                    instantly — no hosting dashboard, no redeploy.
+                  </p>
+
+                  <div className="space-y-2 mb-6 text-sm">
+                    <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                      <span className="text-muted-foreground">Secret key in use</span>
+                      <span className="font-mono text-xs">
+                        {settings?.stripe_secret_key?.hint || "unset"}
+                        <span className="ml-2 text-muted-foreground">({settings?.stripe_secret_key?.source})</span>
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
+                      <span className="text-muted-foreground">Webhook secret in use</span>
+                      <span className="font-mono text-xs">
+                        {settings?.stripe_webhook_secret?.hint || "unset"}
+                        <span className="ml-2 text-muted-foreground">({settings?.stripe_webhook_secret?.source})</span>
+                      </span>
+                    </div>
+                    <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${
+                      settings?.stripe_identity?.ok ? "border-primary/40 bg-primary/5" : "border-destructive/40 bg-destructive/5"
+                    }`}>
+                      <span className="text-muted-foreground">Connected Stripe account</span>
+                      <span className="font-semibold text-xs">
+                        {settings?.stripe_identity?.ok
+                          ? `${settings.stripe_identity.account_name || "—"} (${settings.stripe_identity.account_id})`
+                          : `Not verified: ${settings?.stripe_identity?.error || "no key"}`}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-sm font-medium block mb-1">New Stripe secret key</label>
+                      <input
+                        type="password"
+                        value={newSecretKey}
+                        onChange={(e) => setNewSecretKey(e.target.value)}
+                        placeholder="sk_live_..."
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm font-mono outline-none focus:border-primary"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium block mb-1">New webhook signing secret</label>
+                      <input
+                        type="password"
+                        value={newWebhookSecret}
+                        onChange={(e) => setNewWebhookSecret(e.target.value)}
+                        placeholder="whsec_..."
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm font-mono outline-none focus:border-primary"
+                      />
+                    </div>
+                    <Button onClick={saveSettings} disabled={savingSettings || (!newSecretKey.trim() && !newWebhookSecret.trim())}>
+                      {savingSettings ? <Loader2 size={14} className="animate-spin mr-1" /> : null}
+                      Save &amp; apply now
+                    </Button>
+                    {settingsMsg && (
+                      <div className="p-3 rounded-xl text-sm border border-primary/30 bg-primary/5">{settingsMsg}</div>
+                    )}
+                  </div>
+                </div>
               </div>
             )}
           </>

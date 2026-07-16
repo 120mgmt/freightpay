@@ -523,6 +523,90 @@ def user_reset_link(user_id: int):
 
 
 # ------------------------------------------------------------------
+# Platform settings (Stripe keys — DB-backed, bypasses host env vars)
+# ------------------------------------------------------------------
+def _stripe_identity_for_key(secret: str) -> Dict[str, Any]:
+    """Which Stripe account does this key belong to? (validation feedback)"""
+    try:
+        import stripe as _stripe_mod
+
+        acct = _stripe_mod.Account.retrieve(api_key=secret)
+        profile = acct.get("business_profile") or {}
+        dash = ((acct.get("settings") or {}).get("dashboard") or {})
+        return {
+            "ok": True,
+            "account_id": acct.get("id"),
+            "account_name": profile.get("name") or dash.get("display_name"),
+        }
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@admin_portal_bp.get("/platform-settings")
+@platform_admin_required
+def get_platform_settings():
+    from utils.platform_settings import ENV_BACKED_KEYS, get_setting, secret_hint
+
+    out = {}
+    for skey, env_name in ENV_BACKED_KEYS.items():
+        effective = get_setting(skey) or os.getenv(env_name) or ""
+        out[skey] = {
+            "hint": secret_hint(effective),
+            "source": "database" if get_setting(skey) else ("env" if os.getenv(env_name) else "unset"),
+        }
+    secret = (get_setting("stripe_secret_key") or os.getenv("STRIPE_SECRET_KEY") or "").strip()
+    out["stripe_identity"] = _stripe_identity_for_key(secret) if secret else {"ok": False, "error": "no key set"}
+    return jsonify(out), 200
+
+
+@admin_portal_bp.post("/platform-settings")
+@platform_admin_required
+def set_platform_settings():
+    """
+    Body: {"stripe_secret_key": "sk_live_...", "stripe_webhook_secret": "whsec_..."}
+    Either field optional; empty string clears the DB override (env resumes).
+    Applied to the running process immediately — no redeploy needed.
+    """
+    from utils.platform_settings import secret_hint, set_setting
+
+    data = request.get_json(silent=True) or {}
+    result: Dict[str, Any] = {}
+
+    if "stripe_secret_key" in data:
+        val = (str(data["stripe_secret_key"] or "")).strip()
+        if val and not (val.startswith("sk_live_") or val.startswith("sk_test_")):
+            return jsonify({"error": "INVALID_STRIPE_SECRET_KEY", "detail": "must start with sk_live_ or sk_test_"}), 400
+        if val:
+            identity = _stripe_identity_for_key(val)
+            if not identity.get("ok"):
+                return jsonify({"error": "STRIPE_KEY_REJECTED", "detail": identity.get("error")}), 400
+            result["stripe_identity"] = identity
+        set_setting("stripe_secret_key", val)
+        result["stripe_secret_key"] = {"hint": secret_hint(val) if val else "cleared"}
+        # New account -> old cached catalog is wrong; refresh on next use.
+        try:
+            from billing.checkout import _catalog_cache
+
+            _catalog_cache["at"] = 0.0
+            _catalog_cache["pricing"] = None
+        except Exception:
+            pass
+
+    if "stripe_webhook_secret" in data:
+        val = (str(data["stripe_webhook_secret"] or "")).strip()
+        if val and not val.startswith("whsec_"):
+            return jsonify({"error": "INVALID_WEBHOOK_SECRET", "detail": "must start with whsec_"}), 400
+        set_setting("stripe_webhook_secret", val)
+        result["stripe_webhook_secret"] = {"hint": secret_hint(val) if val else "cleared"}
+
+    if not result:
+        return jsonify({"error": "NO_SETTINGS_PROVIDED"}), 400
+
+    result["status"] = "saved"
+    return jsonify(result), 200
+
+
+# ------------------------------------------------------------------
 # Payroll runs (cross-tenant)
 # ------------------------------------------------------------------
 @admin_portal_bp.get("/payroll-runs")
