@@ -583,24 +583,31 @@ def require_active_subscription(_fn: Optional[F] = None, *, feature: Optional[st
             if _allow_when_gating_off() or _bypass_enabled():
                 return fn(*args, **kwargs)
 
-            # Manual plan grant by a platform admin (companies.plan_override)
-            # takes precedence over Stripe entirely. Only payroll routes use
-            # this decorator, so: payroll-capable plans pass, bookkeeping-only
-            # is refused with a clear message.
-            override = _company_plan_override()
-            if override:
-                if override in ("combo", "payroll_only"):
-                    return fn(*args, **kwargs)
-                return (
-                    jsonify(
-                        {
-                            "error": "plan_feature_unavailable",
-                            "message": "Your assigned plan does not include payroll.",
-                            "plan": override,
-                        }
-                    ),
-                    402,
+            # Real package check first (payroll_only / combo grant payroll;
+            # bookkeeping_only does not). Resolves the company's manual override
+            # or its live Stripe subscription. Only payroll routes use this
+            # decorator, so the capability is always "payroll".
+            #  - True  -> correct package, allow (usage limits below are legacy
+            #             tier limits that don't apply to the real packages)
+            #  - False -> wrong package (e.g. bookkeeping-only) -> 402
+            #  - None  -> couldn't resolve a package; fall through to the
+            #             legacy Stripe/entitlement path for backward-compat.
+            try:
+                from utils.plan_access import (
+                    _extract_company_id,
+                    _needs_plan_response,
+                    company_has_capability,
                 )
+
+                _cid = _extract_company_id()
+                if _cid is not None:
+                    _has = company_has_capability(_cid, "payroll")
+                    if _has is True:
+                        return fn(*args, **kwargs)
+                    if _has is False:
+                        return _needs_plan_response("payroll")
+            except Exception:
+                pass  # never let the gate itself 500 — fall through
 
             # HARDENED: never allow unhandled exceptions to become HTML 500
             try:

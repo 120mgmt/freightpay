@@ -10,6 +10,7 @@ from sqlalchemy import select
 
 from db import db
 from models.chart_of_accounts import ACCOUNT_TYPES, Account
+from utils.plan_access import require_plan
 
 coa_bp = Blueprint("coa_bp", __name__, url_prefix="/coa")
 
@@ -46,6 +47,7 @@ def _require_company_id() -> int:
 
 
 @coa_bp.route("/seed", methods=["POST"])
+@require_plan("bookkeeping")
 def seed_coa():
     try:
         company_id = _require_company_id()
@@ -62,6 +64,7 @@ def seed_coa():
 
 
 @coa_bp.route("/accounts", methods=["GET"])
+@require_plan("bookkeeping")
 def list_accounts():
     try:
         company_id = _require_company_id()
@@ -79,6 +82,7 @@ def list_accounts():
 
 
 @coa_bp.route("/accounts", methods=["POST"])
+@require_plan("bookkeeping")
 def create_account():
     """
     Add a single custom account to the company's chart of accounts.
