@@ -59,7 +59,7 @@ const Register = () => {
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight mb-3">Account created!</h1>
           <p className="text-muted-foreground mb-8">
-            Please check your email to verify your account, then sign in to get started.
+            Your account is ready — sign in to get started.
           </p>
           <Button
             onClick={() => navigate("/signin")}
