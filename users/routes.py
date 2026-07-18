@@ -309,3 +309,177 @@ def reset_password():
     user.set_password(new_pw)
     db.commit()
     return jsonify({"status": "password_reset"}), 200
+
+
+# ------------------------------------------------------------------
+# Team members — let one company have multiple logins (admin/manager/viewer)
+# ------------------------------------------------------------------
+TEAM_ROLES = {"admin", "manager", "viewer"}
+
+
+def _invite_base_url() -> str:
+    base = (
+        os.getenv("FRONTEND_BASE_URL")
+        or os.getenv("BASE_URL")
+        or os.getenv("APP_BASE_URL")
+        or "https://ledgerhaul.com"
+    )
+    base = base.rstrip("/")
+    if "api." in base:  # never build user links against the API host
+        base = "https://ledgerhaul.com"
+    return base
+
+
+def _make_invite_link(email: str) -> str:
+    from users.email_verification import generate_verification_token
+
+    token = generate_verification_token(f"pwd-reset:{email}")
+    return f"{_invite_base_url()}/reset-password?token={token}"
+
+
+def _team_member_dict(u: User, me_id: int) -> dict:
+    return {
+        "id": u.id,
+        "email": u.email,
+        "first_name": u.first_name,
+        "last_name": u.last_name,
+        "role": u.role,
+        "is_active": bool(u.is_active),
+        "is_self": u.id == me_id,
+    }
+
+
+def _require_company_admin():
+    """Returns (user, None) for a company admin, or (None, (response, status))."""
+    user = get_current_user()
+    if not user or not user.is_active:
+        return None, (jsonify({"error": "UNAUTHORIZED"}), 401)
+    if (user.role or "").strip().lower() != "admin":
+        return None, (jsonify({"error": "COMPANY_ADMIN_REQUIRED"}), 403)
+    return user, None
+
+
+@users_bp.get("/team")
+@require_auth
+def team_list():
+    me, err = _require_company_admin()
+    if err:
+        return err
+    db: Session = get_db()
+    rows = db.execute(
+        select(User).where(User.company_id == me.company_id).order_by(User.created_at)
+    ).scalars().all()
+    return jsonify([_team_member_dict(u, me.id) for u in rows]), 200
+
+
+@users_bp.post("/team")
+@require_auth
+def team_add():
+    me, err = _require_company_admin()
+    if err:
+        return err
+
+    db: Session = get_db()
+    data = request.get_json(silent=True) or {}
+    email = (data.get("email") or "").strip().lower()
+    first_name = (data.get("first_name") or "").strip()
+    last_name = (data.get("last_name") or "").strip()
+    role = (data.get("role") or "viewer").strip().lower()
+
+    if not email or not first_name or not last_name:
+        return jsonify({"error": "MISSING_REQUIRED_FIELDS"}), 400
+    if role not in TEAM_ROLES:
+        return jsonify({"error": "INVALID_ROLE", "allowed": sorted(TEAM_ROLES)}), 400
+    if "@" not in email:
+        return jsonify({"error": "INVALID_EMAIL"}), 400
+    if db.execute(select(User).where(User.email == email)).scalar_one_or_none():
+        return jsonify({"error": "EMAIL_ALREADY_EXISTS"}), 409
+
+    import secrets
+
+    member = User(
+        company_id=me.company_id,
+        email=email,
+        first_name=first_name,
+        last_name=last_name,
+        role=role,
+        is_active=True,
+        email_verified=not _email_verification_required(),
+    )
+    member.set_password(secrets.token_urlsafe(24))  # unusable until they set one
+    member.mark_legal_accepted(tos=True, privacy=True, refund=True)
+    db.add(member)
+    db.commit()
+
+    invite_url = _make_invite_link(email)
+    return jsonify(
+        {
+            "status": "added",
+            "user": _team_member_dict(member, me.id),
+            "invite_url": invite_url,
+            "expires_in_seconds": 3600,
+        }
+    ), 201
+
+
+@users_bp.patch("/team/<int:member_id>")
+@require_auth
+def team_update(member_id: int):
+    me, err = _require_company_admin()
+    if err:
+        return err
+    db: Session = get_db()
+    member = db.get(User, member_id)
+    if not member or member.company_id != me.company_id:
+        return jsonify({"error": "MEMBER_NOT_FOUND"}), 404
+
+    data = request.get_json(silent=True) or {}
+    if "role" in data:
+        role = (str(data["role"]) or "").strip().lower()
+        if role not in TEAM_ROLES:
+            return jsonify({"error": "INVALID_ROLE", "allowed": sorted(TEAM_ROLES)}), 400
+        if member.id == me.id and role != "admin":
+            return jsonify({"error": "CANNOT_DEMOTE_SELF"}), 400
+        member.role = role
+    if "is_active" in data:
+        active = bool(data["is_active"])
+        if member.id == me.id and not active:
+            return jsonify({"error": "CANNOT_DISABLE_SELF"}), 400
+        member.is_active = active
+
+    db.commit()
+    return jsonify({"status": "updated", "user": _team_member_dict(member, me.id)}), 200
+
+
+@users_bp.delete("/team/<int:member_id>")
+@require_auth
+def team_delete(member_id: int):
+    me, err = _require_company_admin()
+    if err:
+        return err
+    db: Session = get_db()
+    member = db.get(User, member_id)
+    if not member or member.company_id != me.company_id:
+        return jsonify({"error": "MEMBER_NOT_FOUND"}), 404
+    if member.id == me.id:
+        return jsonify({"error": "CANNOT_DELETE_SELF"}), 400
+
+    from sqlalchemy import text as _text
+
+    email = member.email
+    db.execute(_text("DELETE FROM users WHERE id = :uid"), {"uid": member_id})
+    db.commit()
+    return jsonify({"status": "deleted", "email": email}), 200
+
+
+@users_bp.post("/team/<int:member_id>/invite-link")
+@require_auth
+def team_invite_link(member_id: int):
+    me, err = _require_company_admin()
+    if err:
+        return err
+    db: Session = get_db()
+    member = db.get(User, member_id)
+    if not member or member.company_id != me.company_id:
+        return jsonify({"error": "MEMBER_NOT_FOUND"}), 404
+    return jsonify({"invite_url": _make_invite_link(member.email), "expires_in_seconds": 3600}), 200
