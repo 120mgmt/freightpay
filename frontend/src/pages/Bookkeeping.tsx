@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { apiFetch } from "@/lib/api";
-import { Loader2, RefreshCw, Layers } from "lucide-react";
+import { Loader2, RefreshCw, Layers, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+
+const ACCOUNT_TYPES = ["asset", "liability", "equity", "revenue", "expense"] as const;
 
 interface Account {
   id: number;
@@ -30,6 +32,12 @@ const Bookkeeping = () => {
   const [seeding, setSeeding] = useState(false);
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
+
+  const [showAdd, setShowAdd] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [newCode, setNewCode] = useState("");
+  const [newName, setNewName] = useState("");
+  const [newType, setNewType] = useState<string>("expense");
 
   const load = async () => {
     setLoading(true);
@@ -70,6 +78,42 @@ const Bookkeeping = () => {
     setSeeding(false);
   };
 
+  const handleAdd = async () => {
+    setAdding(true);
+    setMsg("");
+    setError("");
+    try {
+      const res = await apiFetch("/coa/accounts", {
+        method: "POST",
+        body: JSON.stringify({
+          account_code: newCode.trim(),
+          name: newName.trim(),
+          account_type: newType,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMsg(`Account “${data.name}” (${data.account_code}) added.`);
+        setNewCode("");
+        setNewName("");
+        setNewType("expense");
+        setShowAdd(false);
+        await load();
+      } else {
+        const map: Record<string, string> = {
+          account_code_required: "Enter an account code.",
+          name_required: "Enter an account name.",
+          invalid_account_type: "Choose a valid account type.",
+          account_code_exists: `Account code ${newCode.trim()} already exists.`,
+        };
+        setError(map[data.error] || data.detail || data.error || "Could not add account.");
+      }
+    } catch {
+      setError("Network error — check your connection.");
+    }
+    setAdding(false);
+  };
+
   const grouped = TYPE_ORDER.map((type) => ({
     type,
     items: accounts.filter((a) => a.account_type === type),
@@ -92,8 +136,50 @@ const Bookkeeping = () => {
                 Seed Default Accounts
               </Button>
             )}
+            {accounts.length > 0 && (
+              <Button size="sm" onClick={() => { setShowAdd((v) => !v); setError(""); setMsg(""); }}
+                className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
+                {showAdd ? <X size={14} className="mr-1" /> : <Plus size={14} className="mr-1" />}
+                {showAdd ? "Cancel" : "Add Account"}
+              </Button>
+            )}
           </div>
         </div>
+
+        {showAdd && (
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-5 mb-6">
+            <h2 className="font-bold text-sm mb-3">New account</h2>
+            <div className="grid sm:grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium block mb-1 text-muted-foreground">Account code</label>
+                <input value={newCode} onChange={(e) => setNewCode(e.target.value)} placeholder="e.g. 6100"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm font-mono outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1 text-muted-foreground">Name</label>
+                <input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Fuel"
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm outline-none focus:border-primary" />
+              </div>
+              <div>
+                <label className="text-xs font-medium block mb-1 text-muted-foreground">Type</label>
+                <select value={newType} onChange={(e) => setNewType(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm outline-none focus:border-primary capitalize">
+                  {ACCOUNT_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 mt-4">
+              <Button size="sm" onClick={handleAdd} disabled={adding || !newCode.trim() || !newName.trim()}
+                className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
+                {adding ? <Loader2 size={14} className="animate-spin mr-1" /> : <Plus size={14} className="mr-1" />}
+                Add account
+              </Button>
+              <span className="text-xs text-muted-foreground">
+                Normal balance is set automatically (assets &amp; expenses are debit; the rest are credit).
+              </span>
+            </div>
+          </div>
+        )}
 
         {msg && (
           <div className="p-3 rounded-xl text-sm mb-4 border border-primary/30 bg-primary/5 text-primary">
