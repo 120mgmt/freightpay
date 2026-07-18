@@ -312,9 +312,12 @@ def reset_password():
 
 
 # ------------------------------------------------------------------
-# Team members — let one company have multiple logins (admin/manager/viewer)
+# Team members — let one company have multiple logins.
+# Only the company OWNER (the original registrant, role "admin") manages the
+# team. Teammates can be Manager or Viewer only — never admin — so there is
+# exactly one owner account per company with full access.
 # ------------------------------------------------------------------
-TEAM_ROLES = {"admin", "manager", "viewer"}
+TEAM_ROLES = {"manager", "viewer"}
 
 
 def _invite_base_url() -> str:

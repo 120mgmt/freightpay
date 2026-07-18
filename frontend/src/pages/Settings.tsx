@@ -382,7 +382,6 @@ const Settings = () => {
                       className="mt-1 w-full px-3 py-2 rounded-md border border-border bg-card text-sm outline-none focus:border-primary capitalize">
                       <option value="viewer">Viewer — read only</option>
                       <option value="manager">Manager — day-to-day work</option>
-                      <option value="admin">Admin — full access &amp; team management</option>
                     </select>
                   </div>
                 </div>
@@ -411,13 +410,16 @@ const Settings = () => {
                       <div className="text-xs text-muted-foreground truncate">{m.email}</div>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <select value={m.role} disabled={busyMember === m.id || m.is_self}
-                        onChange={(e) => patchMember(m, { role: e.target.value })}
-                        className="rounded-md border border-border bg-card px-2 py-1 text-xs outline-none focus:border-primary">
-                        <option value="admin">admin</option>
-                        <option value="manager">manager</option>
-                        <option value="viewer">viewer</option>
-                      </select>
+                      {m.role === "admin" ? (
+                        <span className="text-xs font-semibold px-2 py-1 rounded bg-primary/10 text-primary">Owner</span>
+                      ) : (
+                        <select value={m.role} disabled={busyMember === m.id}
+                          onChange={(e) => patchMember(m, { role: e.target.value })}
+                          className="rounded-md border border-border bg-card px-2 py-1 text-xs outline-none focus:border-primary">
+                          <option value="manager">manager</option>
+                          <option value="viewer">viewer</option>
+                        </select>
+                      )}
                       {!m.is_self && (
                         <>
                           <Button size="sm" variant="outline" title="Copy a fresh invite / reset link" disabled={busyMember === m.id} onClick={() => regenLink(m)}>

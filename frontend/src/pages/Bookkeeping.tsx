@@ -145,7 +145,7 @@ const Bookkeeping = () => {
                 Seed Default Accounts
               </Button>
             )}
-            {!needsPlan && accounts.length > 0 && (
+            {!needsPlan && !loading && (
               <Button size="sm" onClick={() => { setShowAdd((v) => !v); setError(""); setMsg(""); }}
                 className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
                 {showAdd ? <X size={14} className="mr-1" /> : <Plus size={14} className="mr-1" />}

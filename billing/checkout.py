@@ -79,6 +79,20 @@ def _stripe_client():
     return stripe
 
 
+def _trial_days() -> int:
+    """Free-trial length in days for new subscriptions (0 = no trial)."""
+    try:
+        n = int((_get_env("STRIPE_TRIAL_DAYS") or "14").strip())
+        return n if n > 0 else 0
+    except Exception:
+        return 14
+
+
+def _subscription_data() -> Dict[str, Any]:
+    days = _trial_days()
+    return {"trial_period_days": days} if days > 0 else {}
+
+
 def _base_url() -> str:
     explicit = _get_env("BASE_URL") or _get_env("APP_BASE_URL")
     if explicit:
@@ -619,6 +633,10 @@ def checkout_create():
             },
         }
 
+        _sub_data = _subscription_data()
+        if _sub_data:
+            session_kwargs["subscription_data"] = _sub_data
+
         if automatic_tax:
             session_kwargs["automatic_tax"] = {"enabled": True}
         if require_billing_address:
@@ -764,6 +782,7 @@ def checkout_link():
                         "employees": str(employees),
                         "app": "LedgerHaul",
                     },
+                    **({"subscription_data": _subscription_data()} if _subscription_data() else {}),
                 },
                 (
                     "ledgerhaul_checkoutlink_company_"
