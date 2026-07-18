@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { apiFetch } from "@/lib/api";
 import { Loader2, RefreshCw } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -90,6 +91,7 @@ const Reports = () => {
   const [data, setData] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [needsPlan, setNeedsPlan] = useState(false);
 
   const load = useCallback(async (type: ReportType) => {
     setLoading(true);
@@ -99,9 +101,13 @@ const Reports = () => {
       const qs = new URLSearchParams({ period_from: from, period_to: to });
       const res = await apiFetch(`/reporting/${type}?${qs}`);
       const json = await res.json().catch(() => ({}));
-      if (!res.ok) {
+      if (res.status === 402 || json?.error === "plan_feature_unavailable") {
+        setNeedsPlan(true);
+      } else if (!res.ok) {
+        setNeedsPlan(false);
         setError(json.error || `Failed to load ${type} report.`);
       } else {
+        setNeedsPlan(false);
         setData(json);
       }
     } catch {
@@ -158,7 +164,22 @@ const Reports = () => {
           </div>
         )}
 
-        {error && !loading && (
+        {needsPlan && !loading && (
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-8 text-center">
+            <h2 className="font-bold text-lg mb-2">Reports require an active plan</h2>
+            <p className="text-muted-foreground mb-5 max-w-md mx-auto">
+              Financial reports are part of bookkeeping. Subscribe to the
+              <b> Bookkeeping Only</b> or <b>Combo</b> plan to unlock them.
+            </p>
+            <Link to="/billing">
+              <Button className="rounded-full bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))] px-6">
+                Choose a Plan
+              </Button>
+            </Link>
+          </div>
+        )}
+
+        {error && !loading && !needsPlan && (
           <div className="p-4 rounded-xl text-sm border border-destructive/30 bg-destructive/5 text-destructive">
             {error}
           </div>

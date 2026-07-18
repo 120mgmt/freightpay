@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { apiFetch } from "@/lib/api";
 import { Loader2, RefreshCw, Layers, Plus, X } from "lucide-react";
+import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
 const ACCOUNT_TYPES = ["asset", "liability", "equity", "revenue", "expense"] as const;
@@ -33,6 +34,7 @@ const Bookkeeping = () => {
   const [error, setError] = useState("");
   const [msg, setMsg] = useState("");
 
+  const [needsPlan, setNeedsPlan] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [adding, setAdding] = useState(false);
   const [newCode, setNewCode] = useState("");
@@ -45,6 +47,13 @@ const Bookkeeping = () => {
     try {
       const res = await apiFetch("/coa/accounts");
       const data = await res.json().catch(() => null);
+      if (res.status === 402 || data?.error === "plan_feature_unavailable") {
+        setNeedsPlan(true);
+        setAccounts([]);
+        setLoading(false);
+        return;
+      }
+      setNeedsPlan(false);
       if (!res.ok) {
         setError(data?.error || "Failed to load chart of accounts.");
         setLoading(false);
@@ -129,14 +138,14 @@ const Bookkeeping = () => {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" size="sm" onClick={load}><RefreshCw size={14} className="mr-1" /> Refresh</Button>
-            {accounts.length === 0 && !loading && (
+            {!needsPlan && accounts.length === 0 && !loading && (
               <Button size="sm" onClick={handleSeed} disabled={seeding}
                 className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
                 {seeding ? <Loader2 size={14} className="animate-spin mr-1" /> : <Layers size={14} className="mr-1" />}
                 Seed Default Accounts
               </Button>
             )}
-            {accounts.length > 0 && (
+            {!needsPlan && accounts.length > 0 && (
               <Button size="sm" onClick={() => { setShowAdd((v) => !v); setError(""); setMsg(""); }}
                 className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
                 {showAdd ? <X size={14} className="mr-1" /> : <Plus size={14} className="mr-1" />}
@@ -178,6 +187,21 @@ const Bookkeeping = () => {
                 Normal balance is set automatically (assets &amp; expenses are debit; the rest are credit).
               </span>
             </div>
+          </div>
+        )}
+
+        {needsPlan && !loading && (
+          <div className="rounded-2xl border border-primary/30 bg-primary/5 p-8 text-center">
+            <h2 className="font-bold text-lg mb-2">Bookkeeping requires an active plan</h2>
+            <p className="text-muted-foreground mb-5 max-w-md mx-auto">
+              Subscribe to the <b>Bookkeeping Only</b> or <b>Combo</b> plan to keep your books,
+              chart of accounts, and financial reports.
+            </p>
+            <Link to="/billing">
+              <Button className="rounded-full bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))] px-6">
+                Choose a Plan
+              </Button>
+            </Link>
           </div>
         )}
 

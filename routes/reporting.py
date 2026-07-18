@@ -14,6 +14,8 @@ from services.reporting import (
     financials,
 )
 
+from utils.plan_access import require_plan
+
 reporting_bp = Blueprint("reporting_bp", __name__, url_prefix="/reporting")
 
 
@@ -49,6 +51,7 @@ def _require_period_range() -> tuple[str, str]:
 
 
 @reporting_bp.route("/trial-balance", methods=["GET", "POST"])
+@require_plan("bookkeeping")
 def api_trial_balance():
     try:
         company_id = _require_company_id()
@@ -66,6 +69,7 @@ def api_trial_balance():
 
 
 @reporting_bp.route("/profit-and-loss", methods=["GET", "POST"])
+@require_plan("bookkeeping")
 def api_profit_and_loss():
     try:
         company_id = _require_company_id()
@@ -83,6 +87,7 @@ def api_profit_and_loss():
 
 
 @reporting_bp.route("/balance-sheet", methods=["GET", "POST"])
+@require_plan("bookkeeping")
 def api_balance_sheet():
     try:
         company_id = _require_company_id()
@@ -100,6 +105,7 @@ def api_balance_sheet():
 
 
 @reporting_bp.route("/cash-flow", methods=["GET", "POST"])
+@require_plan("bookkeeping")
 def api_cash_flow():
     try:
         company_id = _require_company_id()
@@ -117,6 +123,7 @@ def api_cash_flow():
 
 
 @reporting_bp.route("/financials", methods=["GET", "POST"])
+@require_plan("bookkeeping")
 def api_financials():
     try:
         company_id = _require_company_id()
