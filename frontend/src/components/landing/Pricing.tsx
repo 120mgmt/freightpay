@@ -19,7 +19,7 @@ const plans = [
   },
   {
     name: "Combo",
-    price: "$49",
+    price: "$59",
     per: "/mo + $5 per driver",
     desc: "Payroll and bookkeeping in one ledger. The full stack for growing carriers.",
     features: [
@@ -33,7 +33,7 @@ const plans = [
   },
   {
     name: "Bookkeeping Only",
-    price: "$25",
+    price: "$29",
     per: "/mo flat",
     desc: "Flat-rate double-entry bookkeeping for owner-operators and small fleets.",
     features: [

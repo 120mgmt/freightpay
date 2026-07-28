@@ -425,7 +425,7 @@ const Payroll = () => {
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Rate per mile ($)</Label>
-                          <Input type="number" step="0.01" min="0" className="mt-1 h-9 bg-surface" value={r.ratePerMile}
+                          <Input type="number" step="0.001" min="0" className="mt-1 h-9 bg-surface" value={r.ratePerMile}
                             onChange={(e) => setRow(r.contractor_id, "ratePerMile", e.target.value)} placeholder="0.60" />
                         </div>
                         <div>
@@ -601,8 +601,10 @@ const Payroll = () => {
                                   <thead>
                                     <tr className="text-muted-foreground uppercase tracking-wider">
                                       <th className="text-left py-1 pr-4">Contractor</th>
-                                      <th className="text-right py-1 pr-4">Gross</th>
+                                      <th className="text-right py-1 pr-4">Miles</th>
+                                      <th className="text-right py-1 pr-4">Mileage</th>
                                       <th className="text-right py-1 pr-4">Extras</th>
+                                      <th className="text-right py-1 pr-4">Gross</th>
                                       <th className="text-right py-1 pr-4">Deductions</th>
                                       <th className="text-right py-1">Net</th>
                                     </tr>
@@ -619,17 +621,25 @@ const Payroll = () => {
                                       const dedBits = Object.entries(l.deductions?.items || {})
                                         .filter(([, v]) => Number(v) > 0)
                                         .map(([k, v]) => `${itemLabel(k)} ${money(v)}`);
+                                      // "Extras" excludes mileage so the row reconciles:
+                                      // Gross = Flat + Mileage + Extras.
+                                      const mileagePayAmt = Number(l.mileage?.total || 0);
+                                      const otherExtras = Number(l.accessorials?.total || 0) - mileagePayAmt;
                                       return [
                                         <tr key={i}>
                                           <td className="py-1 pr-4 font-medium">#{l.contractor_id}</td>
+                                          <td className="py-1 pr-4 text-right">
+                                            {mileagePayAmt > 0 ? Number(l.mileage?.miles || 0).toLocaleString() : "—"}
+                                          </td>
+                                          <td className="py-1 pr-4 text-right">{mileagePayAmt > 0 ? money(mileagePayAmt) : "—"}</td>
+                                          <td className="py-1 pr-4 text-right">{money(otherExtras)}</td>
                                           <td className="py-1 pr-4 text-right">{money(l.gross ?? l.base_gross)}</td>
-                                          <td className="py-1 pr-4 text-right">{money(l.accessorials?.total)}</td>
                                           <td className="py-1 pr-4 text-right">{money(l.deductions?.total)}</td>
                                           <td className="py-1 text-right font-semibold">{money(l.net)}</td>
                                         </tr>,
                                         (payBits.length > 0 || dedBits.length > 0) && (
                                           <tr key={`${i}-items`}>
-                                            <td colSpan={5} className="pb-2 pt-0 text-muted-foreground">
+                                            <td colSpan={7} className="pb-2 pt-0 text-muted-foreground">
                                               {payBits.length > 0 && <span>Pay: {payBits.join(" · ")}</span>}
                                               {payBits.length > 0 && dedBits.length > 0 && <span> &nbsp;|&nbsp; </span>}
                                               {dedBits.length > 0 && <span>Deductions: {dedBits.join(" · ")}</span>}
@@ -641,8 +651,17 @@ const Payroll = () => {
                                     {detail.results.totals && (
                                       <tr className="border-t border-border font-bold">
                                         <td className="py-1 pr-4">Totals</td>
+                                        <td className="py-1 pr-4 text-right">
+                                          {Number(detail.results.totals.miles || 0).toLocaleString()}
+                                        </td>
+                                        <td className="py-1 pr-4 text-right">{money(detail.results.totals.mileage)}</td>
+                                        <td className="py-1 pr-4 text-right">
+                                          {money(
+                                            Number(detail.results.totals.accessorials || 0) -
+                                              Number(detail.results.totals.mileage || 0)
+                                          )}
+                                        </td>
                                         <td className="py-1 pr-4 text-right">{money(detail.results.totals.gross)}</td>
-                                        <td className="py-1 pr-4 text-right">{money(detail.results.totals.accessorials)}</td>
                                         <td className="py-1 pr-4 text-right">{money(detail.results.totals.deductions)}</td>
                                         <td className="py-1 text-right text-primary">{money(detail.results.totals.net)}</td>
                                       </tr>

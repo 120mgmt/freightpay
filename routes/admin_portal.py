@@ -24,6 +24,11 @@ from models.company import Company
 from models.user import User
 from utils.auth import get_current_user
 
+# Not re-exported from models/__init__, so import directly.
+from models.chart_of_accounts import Account
+from models.contractor import Contractor
+from models.ledger import Journal, LedgerEntry
+
 T = TypeVar("T")
 
 admin_portal_bp = Blueprint("admin_portal", __name__, url_prefix="/api/admin")
@@ -780,6 +785,385 @@ def list_subscriptions():
         )
 
     return jsonify({"subscriptions": out, "count": len(out)}), 200
+
+
+# ------------------------------------------------------------------
+# Contractors / drivers (cross-company)
+# ------------------------------------------------------------------
+# Fields a platform admin may edit on a contractor profile. Deliberately
+# excludes company_id, tin_last4 and the W-9 flags — those are set by the
+# W-9 flow, not by hand.
+CONTRACTOR_EDITABLE_FIELDS = (
+    "legal_name",
+    "business_name",
+    "display_name",
+    "email",
+    "phone",
+    "address_line1",
+    "address_line2",
+    "city",
+    "state",
+    "postal_code",
+    "country",
+    "tax_classification",
+    "payment_method",
+    "payment_terms",
+    "notes",
+    "pay_type",
+    "rate_per_mile",
+    "flat_rate_per_load",
+    "percentage_of_load",
+    "hourly_rate",
+    "truck_number",
+    "truck_vin",
+    "truck_plate",
+    "trailer_number",
+    "is_active",
+)
+
+CONTRACTOR_NUMERIC_FIELDS = {
+    "rate_per_mile",
+    "flat_rate_per_load",
+    "percentage_of_load",
+    "hourly_rate",
+}
+
+CONTRACTOR_PAY_TYPES = {"per_mile", "flat", "percentage", "hourly"}
+
+
+def _contractor_row(c: Contractor, company_name: Optional[str] = None) -> Dict[str, Any]:
+    d = c.to_dict()
+    d["company_name"] = company_name
+    return d
+
+
+def _w9_status(contractor_id: int) -> Dict[str, Any]:
+    """W-9 presence flags. Never returns file bytes or the full TIN."""
+    if not _table_exists("contractor_w9"):
+        return {"has_upload": False, "has_form": False}
+    try:
+        row = db.session.execute(
+            text(
+                """
+                SELECT file_name, file_size, uploaded_at, form_signed_at,
+                       form_certified, method
+                FROM contractor_w9 WHERE contractor_id = :cid
+                """
+            ),
+            {"cid": contractor_id},
+        ).mappings().first()
+    except Exception:
+        db.session.rollback()
+        return {"has_upload": False, "has_form": False}
+
+    if not row:
+        return {"has_upload": False, "has_form": False}
+    return {
+        "has_upload": bool(row.get("file_name")),
+        "has_form": bool(row.get("form_signed_at")),
+        "method": row.get("method"),
+        "file_name": row.get("file_name"),
+        "file_size": row.get("file_size"),
+        "uploaded_at": row["uploaded_at"].isoformat() if row.get("uploaded_at") else None,
+        "form_signed_at": row["form_signed_at"].isoformat() if row.get("form_signed_at") else None,
+        "form_certified": bool(row.get("form_certified")),
+    }
+
+
+@admin_portal_bp.get("/contractors")
+@platform_admin_required
+def list_contractors():
+    s = db.session
+    page, per_page = _pagination()
+    q = (request.args.get("q") or "").strip()
+    company_id = request.args.get("company_id")
+
+    base = select(Contractor, Company.name).join(Company, Company.id == Contractor.company_id)
+    count_q = select(func.count(Contractor.id))
+
+    conds = [Contractor.deleted_at.is_(None)]
+    if q:
+        like = f"%{q}%"
+        conds.append(
+            Contractor.legal_name.ilike(like)
+            | Contractor.display_name.ilike(like)
+            | Contractor.business_name.ilike(like)
+            | Contractor.email.ilike(like)
+        )
+    if company_id:
+        try:
+            conds.append(Contractor.company_id == int(company_id))
+        except (TypeError, ValueError):
+            pass
+
+    for cond in conds:
+        base = base.where(cond)
+        count_q = count_q.where(cond)
+
+    total = s.execute(count_q).scalar() or 0
+    rows = s.execute(
+        base.order_by(Contractor.created_at.desc(), Contractor.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    ).all()
+
+    return jsonify(
+        {
+            "total": int(total),
+            "page": page,
+            "per_page": per_page,
+            "contractors": [_contractor_row(c, cname) for (c, cname) in rows],
+        }
+    ), 200
+
+
+@admin_portal_bp.get("/contractors/<int:contractor_id>")
+@platform_admin_required
+def get_contractor_admin(contractor_id: int):
+    row = db.session.execute(
+        select(Contractor, Company.name)
+        .join(Company, Company.id == Contractor.company_id)
+        .where(Contractor.id == contractor_id)
+    ).first()
+    if not row:
+        return jsonify({"error": "CONTRACTOR_NOT_FOUND"}), 404
+
+    contractor, company_name = row
+    payload = _contractor_row(contractor, company_name)
+    payload["w9"] = _w9_status(contractor.id)
+    return jsonify(payload), 200
+
+
+@admin_portal_bp.patch("/contractors/<int:contractor_id>")
+@platform_admin_required
+def update_contractor_admin(contractor_id: int):
+    from decimal import Decimal, InvalidOperation
+
+    contractor = db.session.get(Contractor, contractor_id)
+    if not contractor or contractor.deleted_at is not None:
+        return jsonify({"error": "CONTRACTOR_NOT_FOUND"}), 404
+
+    data = request.get_json(silent=True) or {}
+    changed = []
+
+    for field in CONTRACTOR_EDITABLE_FIELDS:
+        if field not in data:
+            continue
+        value = data[field]
+
+        if field in CONTRACTOR_NUMERIC_FIELDS:
+            if value in (None, ""):
+                value = None
+            else:
+                try:
+                    value = Decimal(str(value))
+                except (InvalidOperation, TypeError, ValueError):
+                    return jsonify({"error": "INVALID_NUMBER", "field": field}), 400
+                if value < 0:
+                    return jsonify({"error": "INVALID_NUMBER", "field": field}), 400
+        elif field == "is_active":
+            value = bool(value)
+        elif isinstance(value, str):
+            value = value.strip() or None
+
+        if field == "pay_type" and value is not None and value not in CONTRACTOR_PAY_TYPES:
+            return jsonify(
+                {"error": "INVALID_PAY_TYPE", "allowed": sorted(CONTRACTOR_PAY_TYPES)}
+            ), 400
+
+        # legal_name is NOT NULL — refuse to blank it.
+        if field == "legal_name" and not value:
+            return jsonify({"error": "LEGAL_NAME_REQUIRED"}), 400
+
+        setattr(contractor, field, value)
+        changed.append(field)
+
+    if not changed:
+        return jsonify({"error": "NO_FIELDS", "allowed": list(CONTRACTOR_EDITABLE_FIELDS)}), 400
+
+    actor = getattr(request, "platform_admin", None)
+    if actor is not None:
+        contractor.updated_by_user_id = actor.id
+
+    try:
+        db.session.commit()
+    except Exception as exc:  # noqa: BLE001 - need the message to classify it
+        db.session.rollback()
+        msg = str(exc).lower()
+        # (company_id, email) and (company_id, legal_name, phone) are unique.
+        if "uq_contractors_company_email" in msg or "uq_contractors_company_legal_phone" in msg:
+            return jsonify(
+                {
+                    "error": "DUPLICATE_CONTRACTOR",
+                    "detail": "Another contractor at this company already uses that "
+                    "email, or that name and phone combination.",
+                }
+            ), 409
+        return jsonify({"error": "UPDATE_FAILED", "detail": str(exc)}), 500
+
+    return jsonify({"status": "updated", "changed": changed, "contractor": contractor.to_dict()}), 200
+
+
+# ------------------------------------------------------------------
+# Expenses (cross-company)
+# ------------------------------------------------------------------
+def _expense_filters():
+    """Shared WHERE for the expense list and its total."""
+    conds = [
+        Account.account_type == "expense",
+        LedgerEntry.debit > 0,
+    ]
+
+    # Default to hand-entered expenses — "who added this" only means something
+    # for manual entries. ?source=all also includes payroll/system postings.
+    if (request.args.get("source") or "manual").strip().lower() != "all":
+        conds.append(Journal.source_type == "manual")
+
+    company_id = request.args.get("company_id")
+    if company_id:
+        try:
+            conds.append(Journal.company_id == int(company_id))
+        except (TypeError, ValueError):
+            pass
+
+    q = (request.args.get("q") or "").strip()
+    if q:
+        like = f"%{q}%"
+        conds.append(
+            Journal.description.ilike(like)
+            | LedgerEntry.memo.ilike(like)
+            | Account.name.ilike(like)
+            | User.email.ilike(like)
+        )
+
+    date_from = (request.args.get("date_from") or "").strip()
+    if date_from:
+        try:
+            conds.append(Journal.posted_at >= datetime.strptime(date_from, "%Y-%m-%d").replace(tzinfo=timezone.utc))
+        except ValueError:
+            pass
+
+    date_to = (request.args.get("date_to") or "").strip()
+    if date_to:
+        try:
+            end = datetime.strptime(date_to, "%Y-%m-%d").replace(
+                hour=23, minute=59, second=59, tzinfo=timezone.utc
+            )
+            conds.append(Journal.posted_at <= end)
+        except ValueError:
+            pass
+
+    return conds
+
+
+@admin_portal_bp.get("/expenses")
+@platform_admin_required
+def list_expenses():
+    """Every expense across every company: who entered it, category, amount, date."""
+    s = db.session
+    page, per_page = _pagination()
+
+    # posted_by is nullable (it is set inside a best-effort try/except when a
+    # transaction is created), so users MUST be an outer join or those rows vanish.
+    def _joined(stmt):
+        return (
+            stmt.select_from(LedgerEntry)
+            .join(Journal, Journal.id == LedgerEntry.journal_id)
+            .join(Account, Account.id == LedgerEntry.account_id)
+            .join(Company, Company.id == Journal.company_id)
+            .outerjoin(User, User.id == Journal.posted_by)
+        )
+
+    conds = _expense_filters()
+
+    base = _joined(
+        select(
+            LedgerEntry.id,
+            LedgerEntry.debit,
+            LedgerEntry.memo,
+            LedgerEntry.account_code,
+            Account.name,
+            Journal.id,
+            Journal.company_id,
+            Journal.description,
+            Journal.posted_at,
+            Journal.accounting_period,
+            Journal.source_type,
+            Company.name,
+            User.id,
+            User.email,
+            User.first_name,
+            User.last_name,
+        )
+    )
+    count_q = _joined(select(func.count(LedgerEntry.id)))
+    sum_q = _joined(select(func.coalesce(func.sum(LedgerEntry.debit), 0)))
+
+    for cond in conds:
+        base = base.where(cond)
+        count_q = count_q.where(cond)
+        sum_q = sum_q.where(cond)
+
+    total = s.execute(count_q).scalar() or 0
+    total_amount = s.execute(sum_q).scalar() or 0
+    rows = s.execute(
+        base.order_by(Journal.posted_at.desc(), LedgerEntry.id.desc())
+        .offset((page - 1) * per_page)
+        .limit(per_page)
+    ).all()
+
+    expenses = []
+    for r in rows:
+        (
+            entry_id,
+            debit,
+            memo,
+            account_code,
+            account_name,
+            journal_id,
+            company_id,
+            description,
+            posted_at,
+            period,
+            source_type,
+            company_name,
+            user_id,
+            user_email,
+            first_name,
+            last_name,
+        ) = r
+
+        user = None
+        if user_id is not None:
+            full_name = " ".join(p for p in (first_name, last_name) if p).strip()
+            user = {"id": user_id, "email": user_email, "name": full_name or user_email}
+
+        expenses.append(
+            {
+                "id": entry_id,
+                "journal_id": journal_id,
+                "company_id": company_id,
+                "company_name": company_name,
+                "user": user,
+                "category": {"account_code": account_code, "name": account_name},
+                "amount": str(debit),
+                "date": posted_at.date().isoformat() if posted_at else None,
+                "accounting_period": period,
+                "description": description,
+                "vendor": memo,
+                "source_type": source_type,
+            }
+        )
+
+    return jsonify(
+        {
+            "total": int(total),
+            "page": page,
+            "per_page": per_page,
+            "total_amount": str(total_amount),
+            "expenses": expenses,
+        }
+    ), 200
 
 
 if __name__ == "__main__":

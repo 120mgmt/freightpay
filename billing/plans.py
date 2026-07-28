@@ -35,7 +35,7 @@ def load_plans() -> Dict[str, Plan]:
 
     plans: Dict[str, Plan] = {}
 
-    # Combo: $99 base + $6 / employee
+    # Combo: $59 base + $5 / employee (amounts live in Stripe, not here)
     plans["combo"] = Plan(
         code="combo",
         name="Payroll + Bookkeeping",
@@ -43,7 +43,7 @@ def load_plans() -> Dict[str, Plan]:
         per_employee_price_id=_env("STRIPE_COMBO_PER_EMPLOYEE_PRICE_ID"),
     )
 
-    # Payroll only: $49 base + $8 / employee
+    # Payroll only: $29 base + $5 / employee (amounts live in Stripe, not here)
     plans["payroll_only"] = Plan(
         code="payroll_only",
         name="Payroll Only",
@@ -51,7 +51,7 @@ def load_plans() -> Dict[str, Plan]:
         per_employee_price_id=_env("STRIPE_PAYROLL_PER_EMPLOYEE_PRICE_ID"),
     )
 
-    # Bookkeeping only: $69 flat
+    # Bookkeeping only: $29 flat (amount lives in Stripe, not here)
     plans["bookkeeping_only"] = Plan(
         code="bookkeeping_only",
         name="Bookkeeping Only",

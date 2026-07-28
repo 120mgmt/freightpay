@@ -558,7 +558,17 @@ def payroll_export_run(run_id: str):
     output = io.StringIO()
     writer = csv.writer(output)
 
-    headers = ["contractor_id", "base_gross", "accessorials_total", "deductions_total", "gross", "net"]
+    headers = [
+        "contractor_id",
+        "base_gross",
+        "miles",
+        "rate_per_mile",
+        "mileage_total",
+        "accessorials_total",
+        "deductions_total",
+        "gross",
+        "net",
+    ]
     writer.writerow(headers)
 
     for item in rows:
@@ -566,10 +576,14 @@ def payroll_export_run(run_id: str):
             continue
         access_total = ((item.get("accessorials") or {}).get("total")) if isinstance(item.get("accessorials"), dict) else ""
         ded_total = ((item.get("deductions") or {}).get("total")) if isinstance(item.get("deductions"), dict) else ""
+        mileage = item.get("mileage") if isinstance(item.get("mileage"), dict) else {}
         writer.writerow(
             [
                 item.get("contractor_id", ""),
                 item.get("base_gross", ""),
+                mileage.get("miles", ""),
+                mileage.get("rate_per_mile", ""),
+                mileage.get("total", ""),
                 access_total,
                 ded_total,
                 item.get("gross", ""),
@@ -579,11 +593,14 @@ def payroll_export_run(run_id: str):
 
     if isinstance(totals, dict):
         writer.writerow([])
-        writer.writerow(["TOTALS", "", "", "", "", ""])
+        writer.writerow(["TOTALS", "", "", "", "", "", "", "", ""])
         writer.writerow(
             [
                 "",
                 totals.get("base_gross", ""),
+                totals.get("miles", ""),
+                "",
+                totals.get("mileage", ""),
                 totals.get("accessorials", ""),
                 totals.get("deductions", ""),
                 totals.get("gross", ""),

@@ -30,6 +30,32 @@ const TAX_CLASSES = [
   { value: "other",       label: "Other" },
 ];
 
+interface W9Status {
+  has_upload?: boolean;
+  has_form?: boolean;
+  file?: { name?: string; size?: number; uploaded_at?: string } | null;
+  form?: { signature_name?: string; signed_at?: string; tin_last4?: string } | null;
+}
+
+const EMPTY_W9 = {
+  name: "",
+  business_name: "",
+  tax_classification: "individual",
+  exempt_payee_code: "",
+  fatca_code: "",
+  address_line1: "",
+  address_line2: "",
+  city: "",
+  state: "",
+  postal_code: "",
+  requester: "",
+  account_numbers: "",
+  tin_type: "ssn",
+  tin: "",
+  signature_name: "",
+  certified: false,
+};
+
 const EMPTY_FORM = {
   legal_name: "",
   business_name: "",
@@ -52,6 +78,14 @@ const Contractors = () => {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState({ ...EMPTY_FORM });
+
+  /* W-9 */
+  const [w9For, setW9For] = useState<Contractor | null>(null);
+  const [w9Status, setW9Status] = useState<W9Status | null>(null);
+  const [w9Mode, setW9Mode] = useState<"choose" | "form">("choose");
+  const [w9Form, setW9Form] = useState({ ...EMPTY_W9 });
+  const [w9Busy, setW9Busy] = useState(false);
+  const [w9Msg, setW9Msg] = useState("");
 
   const set = (k: string, v: string) => setForm((f) => ({ ...f, [k]: v }));
 
@@ -97,6 +131,77 @@ const Contractors = () => {
       setError("Network error — check your connection.");
     }
     setSaving(false);
+  };
+
+  const openW9 = async (c: Contractor) => {
+    setW9For(c);
+    setW9Mode("choose");
+    setW9Msg("");
+    setW9Status(null);
+    // Prefill the form from what we already know about the contractor.
+    setW9Form({
+      ...EMPTY_W9,
+      name: c.legal_name || "",
+      business_name: c.business_name || "",
+      tax_classification: c.tax?.classification || "individual",
+      address_line1: (c.address as { line1?: string })?.line1 || "",
+      city: c.address?.city || "",
+      state: c.address?.state || "",
+      postal_code: (c.address as { postal_code?: string })?.postal_code || "",
+    });
+    try {
+      const res = await apiFetch(`/api/contractors/${c.id}/w9`);
+      if (res.ok) setW9Status(await res.json());
+    } catch {
+      /* status is optional context — the actions still work without it */
+    }
+  };
+
+  const uploadW9 = async (file: File) => {
+    if (!w9For) return;
+    setW9Busy(true);
+    setW9Msg("");
+    try {
+      const body = new FormData();
+      body.append("file", file);
+      // Let the browser set the multipart boundary — do not force Content-Type.
+      const res = await apiFetch(`/api/contractors/${w9For.id}/w9/upload`, { method: "POST", body });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setW9Msg(data.message || data.error || "Could not upload the W-9.");
+      } else {
+        setW9Status(data);
+        setW9Msg("W-9 uploaded.");
+        load();
+      }
+    } catch {
+      setW9Msg("Network error.");
+    }
+    setW9Busy(false);
+  };
+
+  const submitW9Form = async () => {
+    if (!w9For) return;
+    setW9Busy(true);
+    setW9Msg("");
+    try {
+      const res = await apiFetch(`/api/contractors/${w9For.id}/w9/form`, {
+        method: "POST",
+        body: JSON.stringify(w9Form),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setW9Msg(data.message || data.error || "Could not save the W-9.");
+      } else {
+        setW9Status(data);
+        setW9Msg("W-9 completed and signed.");
+        setW9Mode("choose");
+        load();
+      }
+    } catch {
+      setW9Msg("Network error.");
+    }
+    setW9Busy(false);
   };
 
   const handleDelete = async (id: number) => {
@@ -226,9 +331,13 @@ const Contractors = () => {
                       </td>
                       <td className="px-4 py-3 text-muted-foreground capitalize">{(c.tax?.classification || "—").replace(/_/g, " ")}</td>
                       <td className="px-4 py-3">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.tax?.w9_received ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                          {c.tax?.w9_received ? "Received" : "Pending"}
-                        </span>
+                        <button
+                          onClick={() => openW9(c)}
+                          title="Manage W-9"
+                          className={`px-2 py-0.5 rounded text-xs font-medium transition-colors hover:ring-1 hover:ring-primary/40 ${c.tax?.w9_received ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}
+                        >
+                          {c.tax?.w9_received ? "Received" : "Add W-9"}
+                        </button>
                       </td>
                       <td className="px-4 py-3">
                         <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.is_active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
@@ -244,6 +353,208 @@ const Contractors = () => {
                   ))}
                 </tbody>
               </table>
+            </div>
+          </div>
+        )}
+        {/* ---------- W-9 ---------- */}
+        {w9For && (
+          <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 sm:p-8">
+            <div className="w-full max-w-2xl rounded-2xl border border-border bg-card shadow-lg">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <div>
+                  <h3 className="font-semibold">Form W-9</h3>
+                  <p className="text-xs text-muted-foreground">{displayName(w9For)}</p>
+                </div>
+                <Button variant="ghost" size="sm" onClick={() => setW9For(null)}>Close</Button>
+              </div>
+
+              <div className="p-5 space-y-4">
+                {w9Msg && (
+                  <div className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">{w9Msg}</div>
+                )}
+
+                {w9Status && (w9Status.has_upload || w9Status.has_form) && (
+                  <div className="rounded-lg border border-border bg-surface-muted px-3 py-2 text-sm space-y-1">
+                    {w9Status.has_upload && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span>Document on file: {w9Status.file?.name}</span>
+                        <a
+                          className="text-primary hover:underline text-xs"
+                          href={`/api/contractors/${w9For.id}/w9/file`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          Download
+                        </a>
+                      </div>
+                    )}
+                    {w9Status.has_form && (
+                      <div>
+                        Signed digitally by {w9Status.form?.signature_name}
+                        {w9Status.form?.tin_last4 ? ` · TIN •••${w9Status.form.tin_last4}` : ""}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {w9Mode === "choose" && (
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="rounded-xl border border-border p-4">
+                      <h4 className="font-medium text-sm mb-1">Upload a W-9</h4>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Already have a signed W-9? Attach the PDF or a photo (max 5 MB).
+                      </p>
+                      <input
+                        type="file"
+                        accept=".pdf,.png,.jpg,.jpeg"
+                        disabled={w9Busy}
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          if (f) uploadW9(f);
+                          e.target.value = "";
+                        }}
+                        className="block w-full text-xs file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-primary-foreground"
+                      />
+                    </div>
+
+                    <div className="rounded-xl border border-border p-4">
+                      <h4 className="font-medium text-sm mb-1">Fill it in here</h4>
+                      <p className="text-xs text-muted-foreground mb-3">
+                        Complete and sign the W-9 digitally — no printing or scanning.
+                      </p>
+                      <Button size="sm" variant="outline" onClick={() => setW9Mode("form")} disabled={w9Busy}>
+                        Open W-9 form
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
+                {w9Mode === "form" && (
+                  <div className="space-y-4">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <Label className="text-xs">Name (as shown on your tax return) *</Label>
+                        <Input className="mt-1 h-9 bg-surface" value={w9Form.name}
+                          onChange={(e) => setW9Form({ ...w9Form, name: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Business name / disregarded entity</Label>
+                        <Input className="mt-1 h-9 bg-surface" value={w9Form.business_name}
+                          onChange={(e) => setW9Form({ ...w9Form, business_name: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Federal tax classification *</Label>
+                        <select
+                          className="mt-1 h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm"
+                          value={w9Form.tax_classification}
+                          onChange={(e) => setW9Form({ ...w9Form, tax_classification: e.target.value })}
+                        >
+                          {TAX_CLASSES.map((t) => (
+                            <option key={t.value} value={t.value}>{t.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="text-xs">Exempt payee code</Label>
+                          <Input className="mt-1 h-9 bg-surface" value={w9Form.exempt_payee_code}
+                            onChange={(e) => setW9Form({ ...w9Form, exempt_payee_code: e.target.value })} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">FATCA code</Label>
+                          <Input className="mt-1 h-9 bg-surface" value={w9Form.fatca_code}
+                            onChange={(e) => setW9Form({ ...w9Form, fatca_code: e.target.value })} />
+                        </div>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <Label className="text-xs">Address *</Label>
+                        <Input className="mt-1 h-9 bg-surface" value={w9Form.address_line1}
+                          onChange={(e) => setW9Form({ ...w9Form, address_line1: e.target.value })} />
+                      </div>
+                      <div className="grid grid-cols-3 gap-3 sm:col-span-2">
+                        <div>
+                          <Label className="text-xs">City *</Label>
+                          <Input className="mt-1 h-9 bg-surface" value={w9Form.city}
+                            onChange={(e) => setW9Form({ ...w9Form, city: e.target.value })} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">State *</Label>
+                          <Input className="mt-1 h-9 bg-surface" value={w9Form.state}
+                            onChange={(e) => setW9Form({ ...w9Form, state: e.target.value })} />
+                        </div>
+                        <div>
+                          <Label className="text-xs">ZIP *</Label>
+                          <Input className="mt-1 h-9 bg-surface" value={w9Form.postal_code}
+                            onChange={(e) => setW9Form({ ...w9Form, postal_code: e.target.value })} />
+                        </div>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Requester name and address</Label>
+                        <Input className="mt-1 h-9 bg-surface" value={w9Form.requester}
+                          onChange={(e) => setW9Form({ ...w9Form, requester: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Account number(s)</Label>
+                        <Input className="mt-1 h-9 bg-surface" value={w9Form.account_numbers}
+                          onChange={(e) => setW9Form({ ...w9Form, account_numbers: e.target.value })} />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Taxpayer ID type *</Label>
+                        <select
+                          className="mt-1 h-9 w-full rounded-lg border border-border bg-surface px-3 text-sm"
+                          value={w9Form.tin_type}
+                          onChange={(e) => setW9Form({ ...w9Form, tin_type: e.target.value })}
+                        >
+                          <option value="ssn">SSN</option>
+                          <option value="ein">EIN</option>
+                        </select>
+                      </div>
+                      <div>
+                        <Label className="text-xs">
+                          {w9Form.tin_type === "ein" ? "EIN *" : "SSN *"}
+                        </Label>
+                        <Input
+                          className="mt-1 h-9 bg-surface"
+                          placeholder={w9Form.tin_type === "ein" ? "12-3456789" : "123-45-6789"}
+                          value={w9Form.tin}
+                          onChange={(e) => setW9Form({ ...w9Form, tin: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="rounded-xl border border-border bg-surface-muted p-4 space-y-3">
+                      <p className="text-xs text-muted-foreground leading-relaxed">
+                        Under penalties of perjury, I certify that the number shown is my correct
+                        taxpayer identification number, that I am not subject to backup withholding,
+                        that I am a U.S. person, and that any FATCA code entered is correct.
+                      </p>
+                      <label className="flex items-start gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={w9Form.certified}
+                          onChange={(e) => setW9Form({ ...w9Form, certified: e.target.checked })}
+                        />
+                        <span>I certify the statements above.</span>
+                      </label>
+                      <div>
+                        <Label className="text-xs">Signature — type your full name *</Label>
+                        <Input className="mt-1 h-9 bg-surface" value={w9Form.signature_name}
+                          onChange={(e) => setW9Form({ ...w9Form, signature_name: e.target.value })} />
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={submitW9Form} disabled={w9Busy}>
+                        {w9Busy ? "Saving…" : "Sign and save W-9"}
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setW9Mode("choose")} disabled={w9Busy}>
+                        Back
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
