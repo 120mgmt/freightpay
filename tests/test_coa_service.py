@@ -63,3 +63,57 @@ def test_bool_helper_default():
     from services.coa import _to_bool
     assert _to_bool(None, True) is True
     assert _to_bool("unknown", False) is False
+
+
+def test_every_default_code_passes_the_seed_validator():
+    """Guards the whole seed: one out-of-range code 500s /coa/seed for every company."""
+    from models.chart_of_accounts import default_coa_rows
+    from services.coa import _validate_code_range
+
+    for row in default_coa_rows():
+        _validate_code_range(row["account_code"])
+
+
+def test_default_account_codes_are_unique():
+    from models.chart_of_accounts import default_coa_rows
+
+    codes = [r["account_code"] for r in default_coa_rows()]
+    assert len(codes) == len(set(codes))
+
+
+def test_trucking_expense_categories_are_seeded():
+    from models.chart_of_accounts import default_coa_rows
+
+    by_code = {r["account_code"]: r for r in default_coa_rows()}
+    expected = {
+        "5300": "Fuel",
+        "5310": "Maintenance & Repairs",
+        "5320": "Insurance",
+        "5330": "Tolls",
+        "5340": "Driver Pay",
+        "5350": "Office & Admin",
+        "5360": "Software & Subscriptions",
+        "5370": "Load Expenses",
+        "5380": "Permits & Licenses",
+        "5390": "Miscellaneous",
+    }
+    for code, name in expected.items():
+        assert code in by_code, f"missing expense category {code} {name}"
+        assert by_code[code]["name"] == name
+        assert by_code[code]["account_type"] == "expense"
+        assert by_code[code]["normal_balance"] == "debit"
+
+
+def test_trucking_categories_are_user_manageable():
+    """They are everyday categories, not locked system accounts."""
+    from models.chart_of_accounts import trucking_expense_rows
+
+    assert all(r["is_system"] is False for r in trucking_expense_rows())
+
+
+def test_trucking_expense_rows_returns_fresh_dicts():
+    from models.chart_of_accounts import trucking_expense_rows
+
+    first = trucking_expense_rows()
+    first[0]["name"] = "mutated"
+    assert trucking_expense_rows()[0]["name"] == "Fuel"

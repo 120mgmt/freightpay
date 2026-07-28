@@ -533,6 +533,21 @@ const Bookkeeping = () => {
               </div>
             )}
 
+            {/* Seeding is an additive upsert, so this pulls in any categories
+                added since this company was first set up. */}
+            {accounts.length > 0 && (
+              <div className="mb-6 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface-muted/50 px-4 py-3">
+                <Button size="sm" variant="outline" onClick={handleSeed} disabled={seeding}>
+                  {seeding ? <Loader2 size={14} className="animate-spin mr-1" /> : <Layers size={14} className="mr-1" />}
+                  Sync default accounts
+                </Button>
+                <span className="text-xs text-muted-foreground">
+                  Adds any new standard categories (Fuel, Tolls, Maintenance…) without touching
+                  accounts you already have.
+                </span>
+              </div>
+            )}
+
             {grouped.map(({ type, items }) => (
               <div key={type} className="mb-6">
                 <h2 className={`text-xs font-bold uppercase tracking-widest mb-2 px-1 ${TYPE_TEXT[type] || "text-muted-foreground"}`}>

@@ -13,6 +13,11 @@ from sqlalchemy.orm import validates
 from db import db
 
 
+def _num(value: Any) -> str | None:
+    """Numeric -> string for JSON (Decimal is not JSON-serializable)."""
+    return None if value is None else str(value)
+
+
 class Contractor(db.Model):
     __tablename__ = "contractors"
 
@@ -61,6 +66,27 @@ class Contractor(db.Model):
     default_expense_account_code = db.Column(db.String(32), nullable=True)
     default_payable_account_code = db.Column(db.String(32), nullable=True)
     notes = db.Column(db.Text, nullable=True)
+
+    # =========================
+    # STANDING PAY ARRANGEMENT
+    # =========================
+    # How this driver is normally paid. Individual payroll runs may still
+    # override any of these per settlement.
+    pay_type = db.Column(db.String(20), nullable=True)  # per_mile, flat, percentage, hourly
+    # 4 decimals on purpose: per-mile rates are quoted to 3-4 places ($0.655/mi)
+    # and rounding the rate to cents materially changes a settlement.
+    rate_per_mile = db.Column(db.Numeric(8, 4), nullable=True)
+    flat_rate_per_load = db.Column(db.Numeric(12, 2), nullable=True)
+    percentage_of_load = db.Column(db.Numeric(5, 2), nullable=True)  # e.g. 70.00 = 70%
+    hourly_rate = db.Column(db.Numeric(10, 2), nullable=True)
+
+    # =========================
+    # TRUCK / EQUIPMENT
+    # =========================
+    truck_number = db.Column(db.String(50), nullable=True)
+    truck_vin = db.Column(db.String(17), nullable=True)
+    truck_plate = db.Column(db.String(20), nullable=True)
+    trailer_number = db.Column(db.String(50), nullable=True)
 
     # =========================
     # STATUS / LIFECYCLE
@@ -248,6 +274,19 @@ class Contractor(db.Model):
                 "default_currency": self.default_currency,
                 "default_expense_account_code": self.default_expense_account_code,
                 "default_payable_account_code": self.default_payable_account_code,
+            },
+            "pay": {
+                "pay_type": self.pay_type,
+                "rate_per_mile": _num(self.rate_per_mile),
+                "flat_rate_per_load": _num(self.flat_rate_per_load),
+                "percentage_of_load": _num(self.percentage_of_load),
+                "hourly_rate": _num(self.hourly_rate),
+            },
+            "equipment": {
+                "truck_number": self.truck_number,
+                "truck_vin": self.truck_vin,
+                "truck_plate": self.truck_plate,
+                "trailer_number": self.trailer_number,
             },
             "notes": self.notes,
             "is_active": self.is_active,

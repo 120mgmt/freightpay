@@ -96,8 +96,83 @@ const statusPill = (ok: boolean, yes: string, no: string) => (
   </span>
 );
 
-const TABS = ["Overview", "Companies", "Users", "Payroll", "Subscriptions", "Settings"] as const;
+const TABS = [
+  "Overview",
+  "Companies",
+  "Users",
+  "Contractors",
+  "Expenses",
+  "Payroll",
+  "Subscriptions",
+  "Settings",
+] as const;
 type Tab = (typeof TABS)[number];
+
+interface AdminContractor {
+  id: number;
+  company_id: number;
+  company_name?: string | null;
+  legal_name: string;
+  business_name?: string | null;
+  display_name?: string | null;
+  effective_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  address?: {
+    line1?: string | null;
+    line2?: string | null;
+    city?: string | null;
+    state?: string | null;
+    postal_code?: string | null;
+    country?: string | null;
+  };
+  tax?: { classification?: string | null; w9_received?: boolean; tin_last4?: string | null };
+  pay?: {
+    pay_type?: string | null;
+    rate_per_mile?: string | null;
+    flat_rate_per_load?: string | null;
+    percentage_of_load?: string | null;
+    hourly_rate?: string | null;
+  };
+  equipment?: {
+    truck_number?: string | null;
+    truck_vin?: string | null;
+    truck_plate?: string | null;
+    trailer_number?: string | null;
+  };
+  is_active?: boolean;
+}
+
+interface AdminExpense {
+  id: number;
+  journal_id: number;
+  company_id: number;
+  company_name?: string | null;
+  user?: { id: number; email: string; name: string } | null;
+  category?: { account_code: string; name: string };
+  amount: string;
+  date?: string | null;
+  description?: string | null;
+  vendor?: string | null;
+  source_type?: string | null;
+}
+
+const PAY_TYPES: [string, string][] = [
+  ["", "Not set"],
+  ["per_mile", "Per mile"],
+  ["flat", "Flat per load"],
+  ["percentage", "Percentage of load"],
+  ["hourly", "Hourly"],
+];
+
+const paySummary = (c: AdminContractor): string => {
+  const p = c.pay || {};
+  if (p.pay_type === "per_mile" && p.rate_per_mile) return `$${Number(p.rate_per_mile)}/mi`;
+  if (p.pay_type === "flat" && p.flat_rate_per_load) return `$${Number(p.flat_rate_per_load)}/load`;
+  if (p.pay_type === "percentage" && p.percentage_of_load) return `${Number(p.percentage_of_load)}% of load`;
+  if (p.pay_type === "hourly" && p.hourly_rate) return `$${Number(p.hourly_rate)}/hr`;
+  return "—";
+};
 
 interface PlatformSettings {
   stripe_secret_key?: { hint: string; source: string };
@@ -116,6 +191,26 @@ const Admin = () => {
   /* overview */
   const [overview, setOverview] = useState<Overview | null>(null);
   const [loadingOverview, setLoadingOverview] = useState(false);
+
+  /* contractors */
+  const [contractors, setContractors] = useState<AdminContractor[]>([]);
+  const [contractorTotal, setContractorTotal] = useState(0);
+  const [contractorPage, setContractorPage] = useState(1);
+  const [contractorQuery, setContractorQuery] = useState("");
+  const [loadingContractors, setLoadingContractors] = useState(false);
+  const [editing, setEditing] = useState<AdminContractor | null>(null);
+  const [editForm, setEditForm] = useState<Record<string, string>>({});
+  const [savingContractor, setSavingContractor] = useState(false);
+  const [contractorMsg, setContractorMsg] = useState("");
+
+  /* expenses */
+  const [expenses, setExpenses] = useState<AdminExpense[]>([]);
+  const [expenseTotal, setExpenseTotal] = useState(0);
+  const [expenseAmount, setExpenseAmount] = useState("0");
+  const [expensePage, setExpensePage] = useState(1);
+  const [expenseQuery, setExpenseQuery] = useState("");
+  const [expenseSource, setExpenseSource] = useState("manual");
+  const [loadingExpenses, setLoadingExpenses] = useState(false);
 
   /* companies */
   const [companies, setCompanies] = useState<AdminCompany[]>([]);
@@ -222,6 +317,45 @@ const Admin = () => {
       setError("Network error.");
     }
     setLoadingUsers(false);
+  }, []);
+
+  const loadContractors = useCallback(async (page: number, q: string) => {
+    setLoadingContractors(true);
+    setError("");
+    try {
+      const data = await guard(
+        await apiFetch(
+          `/api/admin/contractors?page=${page}&per_page=${PER_PAGE}&q=${encodeURIComponent(q)}`
+        )
+      );
+      if (data) {
+        setContractors(data.contractors || []);
+        setContractorTotal(data.total || 0);
+      }
+    } catch {
+      setError("Network error.");
+    }
+    setLoadingContractors(false);
+  }, []);
+
+  const loadExpenses = useCallback(async (page: number, q: string, source: string) => {
+    setLoadingExpenses(true);
+    setError("");
+    try {
+      const data = await guard(
+        await apiFetch(
+          `/api/admin/expenses?page=${page}&per_page=${PER_PAGE}&q=${encodeURIComponent(q)}&source=${source}`
+        )
+      );
+      if (data) {
+        setExpenses(data.expenses || []);
+        setExpenseTotal(data.total || 0);
+        setExpenseAmount(data.total_amount || "0");
+      }
+    } catch {
+      setError("Network error.");
+    }
+    setLoadingExpenses(false);
   }, []);
 
   const loadRuns = useCallback(async (page: number) => {
@@ -349,13 +483,64 @@ const Admin = () => {
     if (tab === "Overview") loadOverview();
     if (tab === "Companies") loadCompanies(companyPage, companyQuery);
     if (tab === "Users") loadUsers(userPage, userQuery);
+    if (tab === "Contractors") loadContractors(contractorPage, contractorQuery);
+    if (tab === "Expenses") loadExpenses(expensePage, expenseQuery, expenseSource);
     if (tab === "Payroll") loadRuns(runPage);
     if (tab === "Subscriptions") loadSubs();
     if (tab === "Settings") loadSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tab, companyPage, userPage, runPage]);
+  }, [tab, companyPage, userPage, runPage, contractorPage, expensePage, expenseSource]);
 
   /* ---- actions ---- */
+
+  const openContractor = (ct: AdminContractor) => {
+    setContractorMsg("");
+    setEditing(ct);
+    setEditForm({
+      legal_name: ct.legal_name || "",
+      business_name: ct.business_name || "",
+      display_name: ct.display_name || "",
+      email: ct.email || "",
+      phone: ct.phone || "",
+      address_line1: ct.address?.line1 || "",
+      address_line2: ct.address?.line2 || "",
+      city: ct.address?.city || "",
+      state: ct.address?.state || "",
+      postal_code: ct.address?.postal_code || "",
+      pay_type: ct.pay?.pay_type || "",
+      rate_per_mile: ct.pay?.rate_per_mile || "",
+      flat_rate_per_load: ct.pay?.flat_rate_per_load || "",
+      percentage_of_load: ct.pay?.percentage_of_load || "",
+      hourly_rate: ct.pay?.hourly_rate || "",
+      truck_number: ct.equipment?.truck_number || "",
+      truck_vin: ct.equipment?.truck_vin || "",
+      truck_plate: ct.equipment?.truck_plate || "",
+      trailer_number: ct.equipment?.trailer_number || "",
+    });
+  };
+
+  const saveContractor = async () => {
+    if (!editing) return;
+    setSavingContractor(true);
+    setContractorMsg("");
+    try {
+      const res = await apiFetch(`/api/admin/contractors/${editing.id}`, {
+        method: "PATCH",
+        body: JSON.stringify(editForm),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setContractorMsg(data.detail || data.message || data.error || "Could not save changes.");
+      } else {
+        setContractorMsg("Saved.");
+        setEditing(null);
+        loadContractors(contractorPage, contractorQuery);
+      }
+    } catch {
+      setContractorMsg("Network error.");
+    }
+    setSavingContractor(false);
+  };
 
   const openCompany = async (id: number) => {
     setLoadingDetail(id);
@@ -507,6 +692,8 @@ const Admin = () => {
               if (tab === "Overview") loadOverview();
               if (tab === "Companies") loadCompanies(companyPage, companyQuery);
               if (tab === "Users") loadUsers(userPage, userQuery);
+              if (tab === "Contractors") loadContractors(contractorPage, contractorQuery);
+              if (tab === "Expenses") loadExpenses(expensePage, expenseQuery, expenseSource);
               if (tab === "Payroll") loadRuns(runPage);
               if (tab === "Subscriptions") loadSubs();
               if (tab === "Settings") loadSettings();
@@ -821,6 +1008,255 @@ const Admin = () => {
         )}
 
         {/* ---------- PAYROLL ---------- */}
+        {tab === "Contractors" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              {searchBox(contractorQuery, setContractorQuery, () => {
+                setContractorPage(1);
+                loadContractors(1, contractorQuery);
+              }, "Search name, business or email…")}
+              <span className="text-sm text-muted-foreground">{contractorTotal} contractors</span>
+            </div>
+
+            {contractorMsg && (
+              <div className="rounded-xl border border-border bg-card px-4 py-2 text-sm">{contractorMsg}</div>
+            )}
+
+            {editing && (
+              <div className="rounded-2xl border border-border bg-card shadow-sm p-5">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-semibold">
+                    Edit {editing.effective_name || editing.legal_name}
+                    <span className="text-muted-foreground font-normal"> · {editing.company_name}</span>
+                  </h3>
+                  <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>Close</Button>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-3">
+                  {[
+                    ["legal_name", "Legal name"],
+                    ["business_name", "Business name"],
+                    ["display_name", "Display name"],
+                    ["email", "Email"],
+                    ["phone", "Phone"],
+                    ["address_line1", "Address"],
+                    ["address_line2", "Address line 2"],
+                    ["city", "City"],
+                    ["state", "State"],
+                    ["postal_code", "ZIP"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="text-sm">
+                      <span className="text-muted-foreground">{label}</span>
+                      <input
+                        className="mt-1 w-full h-9 rounded-lg border border-border bg-surface px-3 text-sm"
+                        value={editForm[key] ?? ""}
+                        onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                      />
+                    </label>
+                  ))}
+
+                  <label className="text-sm">
+                    <span className="text-muted-foreground">Pay type</span>
+                    <select
+                      className="mt-1 w-full h-9 rounded-lg border border-border bg-surface px-3 text-sm"
+                      value={editForm.pay_type ?? ""}
+                      onChange={(e) => setEditForm({ ...editForm, pay_type: e.target.value })}
+                    >
+                      {PAY_TYPES.map(([v, l]) => (
+                        <option key={v} value={v}>{l}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  {[
+                    ["rate_per_mile", "Rate per mile", "0.001"],
+                    ["flat_rate_per_load", "Flat per load", "0.01"],
+                    ["percentage_of_load", "% of load", "0.01"],
+                    ["hourly_rate", "Hourly rate", "0.01"],
+                  ].map(([key, label, step]) => (
+                    <label key={key} className="text-sm">
+                      <span className="text-muted-foreground">{label}</span>
+                      <input
+                        type="number"
+                        step={step}
+                        min="0"
+                        className="mt-1 w-full h-9 rounded-lg border border-border bg-surface px-3 text-sm"
+                        value={editForm[key] ?? ""}
+                        onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                      />
+                    </label>
+                  ))}
+
+                  {[
+                    ["truck_number", "Truck number"],
+                    ["truck_vin", "Truck VIN"],
+                    ["truck_plate", "Plate"],
+                    ["trailer_number", "Trailer number"],
+                  ].map(([key, label]) => (
+                    <label key={key} className="text-sm">
+                      <span className="text-muted-foreground">{label}</span>
+                      <input
+                        className="mt-1 w-full h-9 rounded-lg border border-border bg-surface px-3 text-sm"
+                        value={editForm[key] ?? ""}
+                        onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                      />
+                    </label>
+                  ))}
+                </div>
+
+                <div className="flex gap-2 mt-5">
+                  <Button size="sm" onClick={saveContractor} disabled={savingContractor}>
+                    {savingContractor ? "Saving…" : "Save changes"}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={() => setEditing(null)}>Cancel</Button>
+                </div>
+              </div>
+            )}
+
+            {loadingContractors && spinner}
+            {!loadingContractors && (
+              <div className="rounded-2xl border border-border bg-card shadow-sm overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted-foreground border-b border-border">
+                      <th className="px-4 py-3 font-semibold">Name</th>
+                      <th className="px-4 py-3 font-semibold">Company</th>
+                      <th className="px-4 py-3 font-semibold">Contact</th>
+                      <th className="px-4 py-3 font-semibold">Pay</th>
+                      <th className="px-4 py-3 font-semibold">Truck</th>
+                      <th className="px-4 py-3 font-semibold">W-9</th>
+                      <th className="px-4 py-3 font-semibold text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contractors.map((ct) => (
+                      <tr key={ct.id} className="border-b border-border last:border-0">
+                        <td className="px-4 py-3 font-medium">
+                          {ct.effective_name || ct.legal_name}
+                          {ct.business_name && (
+                            <div className="text-xs text-muted-foreground">{ct.business_name}</div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">{ct.company_name || `#${ct.company_id}`}</td>
+                        <td className="px-4 py-3 text-muted-foreground">
+                          {ct.email || "—"}
+                          {ct.phone && <div className="text-xs">{ct.phone}</div>}
+                        </td>
+                        <td className="px-4 py-3">{paySummary(ct)}</td>
+                        <td className="px-4 py-3">
+                          {ct.equipment?.truck_number || "—"}
+                          {ct.equipment?.trailer_number && (
+                            <div className="text-xs text-muted-foreground">
+                              Trailer {ct.equipment.trailer_number}
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">{statusPill(!!ct.tax?.w9_received, "On file", "Missing")}</td>
+                        <td className="px-4 py-3 text-right">
+                          <Button variant="outline" size="sm" onClick={() => openContractor(ct)}>Edit</Button>
+                        </td>
+                      </tr>
+                    ))}
+                    {contractors.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="px-4 py-8 text-center text-muted-foreground">
+                          No contractors yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {pager(contractorPage, contractorTotal, setContractorPage)}
+          </div>
+        )}
+
+        {tab === "Expenses" && (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              {searchBox(expenseQuery, setExpenseQuery, () => {
+                setExpensePage(1);
+                loadExpenses(1, expenseQuery, expenseSource);
+              }, "Search description, vendor, category or user…")}
+              <div className="flex items-center gap-3">
+                <select
+                  className="h-9 rounded-lg border border-border bg-surface px-3 text-sm"
+                  value={expenseSource}
+                  onChange={(e) => {
+                    setExpenseSource(e.target.value);
+                    setExpensePage(1);
+                  }}
+                >
+                  <option value="manual">User-entered</option>
+                  <option value="all">All (incl. payroll)</option>
+                </select>
+                <span className="text-sm text-muted-foreground">
+                  {expenseTotal} expenses ·{" "}
+                  <span className="font-semibold text-foreground">
+                    ${Number(expenseAmount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                  </span>
+                </span>
+              </div>
+            </div>
+
+            {loadingExpenses && spinner}
+            {!loadingExpenses && (
+              <div className="rounded-2xl border border-border bg-card shadow-sm overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-muted-foreground border-b border-border">
+                      <th className="px-4 py-3 font-semibold">User</th>
+                      <th className="px-4 py-3 font-semibold">Company</th>
+                      <th className="px-4 py-3 font-semibold">Category</th>
+                      <th className="px-4 py-3 font-semibold text-right">Amount</th>
+                      <th className="px-4 py-3 font-semibold">Date</th>
+                      <th className="px-4 py-3 font-semibold">Description</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {expenses.map((ex) => (
+                      <tr key={ex.id} className="border-b border-border last:border-0">
+                        <td className="px-4 py-3">
+                          {ex.user ? (
+                            <>
+                              <div className="font-medium">{ex.user.name}</div>
+                              <div className="text-xs text-muted-foreground">{ex.user.email}</div>
+                            </>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">{ex.company_name || `#${ex.company_id}`}</td>
+                        <td className="px-4 py-3">
+                          {ex.category?.name || "—"}
+                          <div className="text-xs text-muted-foreground">{ex.category?.account_code}</div>
+                        </td>
+                        <td className="px-4 py-3 text-right font-semibold">
+                          ${Number(ex.amount).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3 text-muted-foreground">{ex.date || "—"}</td>
+                        <td className="px-4 py-3">
+                          {ex.description || "—"}
+                          {ex.vendor && <div className="text-xs text-muted-foreground">{ex.vendor}</div>}
+                        </td>
+                      </tr>
+                    ))}
+                    {expenses.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="px-4 py-8 text-center text-muted-foreground">
+                          No expenses recorded yet.
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {pager(expensePage, expenseTotal, setExpensePage)}
+          </div>
+        )}
+
         {tab === "Payroll" && (
           <>
             {loadingRuns && spinner}

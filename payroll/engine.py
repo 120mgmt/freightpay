@@ -30,6 +30,30 @@ def _D(v: Any, default: Decimal = Decimal("0.00")) -> Decimal:
         return default.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
 
+def _Q(v: Any, default: Decimal = Decimal("0")) -> Decimal:
+    """
+    Safe Decimal coercion for QUANTITIES and RATES (miles, cents-per-mile).
+
+    Unlike _D() this does NOT quantize to 2 places. Per-mile rates are commonly
+    quoted to 3 or 4 decimals ($0.655/mi), and rounding the rate before the
+    multiply overstates the settlement — 2,500 mi x $0.655 must be $1,637.50,
+    not 2,500 x $0.66 = $1,650.00. Only the resulting money is rounded.
+    """
+    try:
+        if v is None:
+            return default
+        if isinstance(v, Decimal):
+            return v
+        if isinstance(v, (int, float)):
+            return Decimal(str(v))
+        s = str(v).strip()
+        if not s:
+            return default
+        return Decimal(s)
+    except (InvalidOperation, ValueError, TypeError):
+        return default
+
+
 def _round_money(v: Decimal) -> Decimal:
     return v.quantize(TWOPLACES, rounding=ROUND_HALF_UP)
 
@@ -126,12 +150,13 @@ def _compute_mileage(lines: Dict[str, Any]) -> Dict[str, Any]:
     Expected:
       { "miles": 200, "rate_per_mile": 0.67 }
     """
-    miles = _D(lines.get("miles"), Decimal("0.00"))
-    rate_per_mile = _D(lines.get("rate_per_mile"), Decimal("0.00"))
+    miles = _Q(lines.get("miles"), Decimal("0"))
+    rate_per_mile = _Q(lines.get("rate_per_mile"), Decimal("0"))
 
     if miles < 0 or rate_per_mile < 0:
         raise ValueError("Mileage inputs must be non-negative")
 
+    # Round only the product — never the rate (see _Q).
     total = _round_money(miles * rate_per_mile)
     return {"miles": miles, "rate_per_mile": rate_per_mile, "total": total}
 
@@ -174,6 +199,10 @@ def run_payroll(payload: Dict[str, Any]) -> Dict[str, Any]:
         "deductions": Decimal("0.00"),
         "gross": Decimal("0.00"),
         "net": Decimal("0.00"),
+        # Mileage is already inside "accessorials"; these are reported separately
+        # so the settlement summary can show miles driven and mileage pay.
+        "mileage": Decimal("0.00"),
+        "miles": Decimal("0"),
     }
 
     for c in contractors:
@@ -223,6 +252,10 @@ def run_payroll(payload: Dict[str, Any]) -> Dict[str, Any]:
         }
 
         results.append(result)
+
+        if mileage is not None:
+            totals["mileage"] = _round_money(totals["mileage"] + mileage["total"])
+            totals["miles"] = totals["miles"] + mileage["miles"]
 
         totals["base_gross"] = _round_money(totals["base_gross"] + base_gross)
         totals["accessorials"] = _round_money(totals["accessorials"] + accessorials["total"])

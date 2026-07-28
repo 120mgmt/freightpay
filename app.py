@@ -39,6 +39,7 @@ from routes.receipts import receipts_bp
 from routes.reconciliation import reconciliation_bp
 from routes.reporting import reporting_bp
 from routes.contractor import contractor_bp
+from routes.contractor_w9 import contractor_w9_bp
 from routes.tax_1099 import tax_1099_bp
 # from routes.driver_settlement_routes import driver_settlement_bp
 from routes.bank_connections import bank_connections_bp
@@ -350,6 +351,7 @@ app.register_blueprint(receipts_bp)
 
 # Contractor
 app.register_blueprint(contractor_bp)
+app.register_blueprint(contractor_w9_bp)
 
 # 1099
 app.register_blueprint(tax_1099_bp)

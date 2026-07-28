@@ -128,6 +128,44 @@ class Account(db.Model):
         }
 
 
+# Trucking expense categories. Kept as a named constant so the seed template,
+# the backfill migration and the tests all agree on one list.
+#
+# is_system is False: unlike the core accounting accounts (wages, payroll tax,
+# AP/AR), these are everyday categories a company may rename or retire.
+# Note seed_default_coa only ever promotes is_system to True, never demotes,
+# so False here stays False.
+TRUCKING_EXPENSE_CATEGORIES: tuple[tuple[str, str], ...] = (
+    ("5300", "Fuel"),
+    ("5310", "Maintenance & Repairs"),
+    ("5320", "Insurance"),
+    ("5330", "Tolls"),
+    # Distinct from 5000 Wages / 5010 Contract Labor, which payroll journalization
+    # posts to automatically. 5340 is for settlements entered by hand.
+    ("5340", "Driver Pay"),
+    ("5350", "Office & Admin"),
+    ("5360", "Software & Subscriptions"),
+    ("5370", "Load Expenses"),
+    ("5380", "Permits & Licenses"),
+    ("5390", "Miscellaneous"),
+)
+
+
+def trucking_expense_rows() -> list[dict]:
+    """Seed rows for the trucking expense categories (fresh dicts per call)."""
+    return [
+        {
+            "account_code": code,
+            "name": name,
+            "account_type": "expense",
+            "normal_balance": "debit",
+            "is_system": False,
+            "is_active": True,
+        }
+        for code, name in TRUCKING_EXPENSE_CATEGORIES
+    ]
+
+
 def default_coa_rows() -> list[dict]:
     """
     System-default accounts seeded per company during onboarding/migration.
@@ -303,10 +341,21 @@ def default_coa_rows() -> list[dict]:
             "is_system": True,
             "is_active": True,
         },
+        # TRUCKING EXPENSE CATEGORIES (day-to-day categories an owner-operator
+        # books costs against). Codes must stay within 1000-5999 — services/coa.py
+        # _validate_code_range rejects anything outside that band and would make
+        # /coa/seed fail for every company.
+        *trucking_expense_rows(),
     ]
 
 
 # Alias for code that expects ChartOfAccount (canonical model name is Account)
 ChartOfAccount = Account
 
-__all__ = ["Account", "ChartOfAccount", "default_coa_rows"]
+__all__ = [
+    "Account",
+    "ChartOfAccount",
+    "default_coa_rows",
+    "trucking_expense_rows",
+    "TRUCKING_EXPENSE_CATEGORIES",
+]

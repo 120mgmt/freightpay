@@ -43,6 +43,49 @@ def _safe_int(v: Any, default: int = 0) -> int:
         return default
 
 
+def _active_contractor_count(company_id: Any) -> int:
+    """
+    Active drivers for a company — the quantity billed on the per-driver price.
+
+    Derived server-side on purpose: a billing quantity supplied by the browser
+    is not trustworthy. Returns 0 on any failure so a counting problem can never
+    block checkout (the customer still gets the base subscription).
+    """
+    try:
+        cid = int(company_id)
+    except (TypeError, ValueError):
+        return 0
+
+    try:
+        from sqlalchemy import text as _text
+
+        from db import db as _db
+
+        if _db.session.execute(_text("SELECT to_regclass('contractors')")).scalar() is None:
+            return 0
+
+        count = _db.session.execute(
+            _text(
+                """
+                SELECT COUNT(*) FROM contractors
+                WHERE company_id = :cid
+                  AND is_active = TRUE
+                  AND deleted_at IS NULL
+                """
+            ),
+            {"cid": cid},
+        ).scalar()
+        return int(count or 0)
+    except Exception:
+        try:
+            from db import db as _db2
+
+            _db2.session.rollback()
+        except Exception:
+            pass
+        return 0
+
+
 def _json_error(
     message: str,
     status: int = 400,
@@ -558,7 +601,6 @@ def checkout_create():
         return _json_error("Invalid JSON body. Send application/json.", 400)
 
     plan_key = str(data.get("plan") or "").strip()
-    employees = _safe_int(data.get("employees", 0), 0)
 
     customer_email = (
         data.get("email")
@@ -586,6 +628,9 @@ def checkout_create():
         company_id = _require_company_id(data)
     except Exception as e:
         return _json_error("invalid_request", 400, detail=str(e))
+
+    # Billed driver count is counted here, not taken from the request body.
+    employees = _active_contractor_count(company_id)
 
     base = _frontend_base_url()
     success_url = _get_env(
@@ -715,7 +760,6 @@ def checkout_link():
     GET /billing/checkout-link
     ?company_id=0
     &plan=combo
-    &employees=0
     &email=you@domain.com
     &name=LedgerHaul%20User
 
@@ -723,7 +767,6 @@ def checkout_link():
     Surfaces Stripe errors as JSON (500).
     """
     plan_key = (request.args.get("plan") or "").strip()
-    employees = _safe_int(request.args.get("employees", 0), 0)
 
     pricing = _pricing_from_env()
     if plan_key not in pricing:
@@ -738,6 +781,9 @@ def checkout_link():
         company_id = _require_company_id(data)
     except Exception as e:
         return _json_error("invalid_request", 400, detail=str(e))
+
+    # Counted server-side; the ?employees query param is ignored.
+    employees = _active_contractor_count(company_id)
 
     customer_email = (request.args.get("email") or "").strip() or None
     customer_name = (request.args.get("name") or "").strip() or None

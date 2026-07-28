@@ -28,7 +28,7 @@ const PLANS = [
   {
     key: "combo",
     name: "Combo",
-    price: "$49",
+    price: "$59",
     period: "/mo + $5 per driver",
     features: [
       "Everything in Payroll and Bookkeeping",
@@ -42,7 +42,7 @@ const PLANS = [
   {
     key: "bookkeeping_only",
     name: "Bookkeeping Only",
-    price: "$25",
+    price: "$29",
     period: "/mo flat",
     features: [
       "Unlimited transactions",
@@ -90,7 +90,9 @@ const Billing = () => {
     try {
       const res = await apiFetch("/billing/checkout", {
         method: "POST",
-        body: JSON.stringify({ plan: planKey, employees: 0 }),
+        // Driver count is counted on the server from active contractors —
+        // a billing quantity sent from the browser is not trustworthy.
+        body: JSON.stringify({ plan: planKey }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok && data.checkout_url) {

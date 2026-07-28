@@ -1,10 +1,12 @@
 const API_BASE = import.meta.env.VITE_API_URL || "";
 
-function authHeaders(extra: Record<string, string> = {}, hasBody = true): Record<string, string> {
+function authHeaders(extra: Record<string, string> = {}, hasJsonBody = true): Record<string, string> {
   const headers: Record<string, string> = {
     // A JSON Content-Type on a bodyless GET makes Flask's request.json
     // raise 400 on strict endpoints — only claim JSON when a body exists.
-    ...(hasBody ? { "Content-Type": "application/json" } : {}),
+    // File uploads must be excluded too: the browser has to set its own
+    // multipart Content-Type with the boundary.
+    ...(hasJsonBody ? { "Content-Type": "application/json" } : {}),
     ...extra,
   };
   const token = localStorage.getItem("lh_token");
@@ -38,7 +40,7 @@ export async function apiFetch(path: string, options: RequestInit = {}) {
       ...options,
       headers: authHeaders(
         (options.headers as Record<string, string>) || {},
-        options.body != null
+        options.body != null && !(options.body instanceof FormData)
       ),
     });
 
