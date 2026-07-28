@@ -52,17 +52,26 @@ def upgrade():
     created_at_col = ", created_at" if has_created_at else ""
     created_at_val = ", now()" if has_created_at else ""
 
+    # Every parameter is explicitly cast. :code appears twice — once in the
+    # SELECT list (where the INSERT target column type is not propagated, so it
+    # would deduce as text) and once compared against account_code (varchar).
+    # Under a driver that binds server-side (psycopg3, which CI uses), Postgres
+    # tries to deduce one type for the placeholder and rejects the conflict with
+    # "inconsistent types deduced for parameter $1". The casts remove the
+    # deduction entirely and work under psycopg2 and psycopg3 alike.
     stmt = sa.text(
         f"""
         INSERT INTO accounts
             (company_id, account_code, name, account_type, normal_balance,
              is_active, is_system{created_at_col})
-        SELECT c.id, :code, :name, 'expense', 'debit', TRUE, FALSE{created_at_val}
+        SELECT c.id, CAST(:code AS VARCHAR), CAST(:name AS VARCHAR),
+               'expense', 'debit', TRUE, FALSE{created_at_val}
         FROM companies c
         WHERE EXISTS (SELECT 1 FROM accounts a WHERE a.company_id = c.id)
           AND NOT EXISTS (
               SELECT 1 FROM accounts a2
-              WHERE a2.company_id = c.id AND a2.account_code = :code
+              WHERE a2.company_id = c.id
+                AND a2.account_code = CAST(:code AS VARCHAR)
           )
         """
     )
