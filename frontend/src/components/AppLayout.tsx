@@ -2,7 +2,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   LayoutDashboard, DollarSign, Users, BookOpen,
-  FileText, CreditCard, Settings, LogOut, ShieldCheck,
+  FileText, CreditCard, Settings, LogOut, ShieldCheck, Receipt,
 } from "lucide-react";
 
 const NAV = [
@@ -10,6 +10,7 @@ const NAV = [
   { label: "Settlements", icon: DollarSign,       to: "/settlements" },
   { label: "Payroll",     icon: Users,            to: "/payroll" },
   { label: "Bookkeeping", icon: BookOpen,         to: "/bookkeeping" },
+  { label: "Invoices",    icon: Receipt,          to: "/invoices" },
   { label: "Reports",     icon: FileText,         to: "/reports" },
   { label: "Billing",     icon: CreditCard,       to: "/billing" },
 ];

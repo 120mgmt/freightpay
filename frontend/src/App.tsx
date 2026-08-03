@@ -15,6 +15,7 @@ import ForgotPassword from "./pages/ForgotPassword.tsx";
 import ResetPassword from "./pages/ResetPassword.tsx";
 import Payroll from "./pages/Payroll.tsx";
 import Contractors from "./pages/Contractors.tsx";
+import Invoices from "./pages/Invoices.tsx";
 import Bookkeeping from "./pages/Bookkeeping.tsx";
 import Reports from "./pages/Reports.tsx";
 import Billing from "./pages/Billing.tsx";
@@ -49,6 +50,7 @@ const App = () => (
             <Route path="/payroll"     element={guard(<Payroll />)} />
             <Route path="/settlements" element={guard(<Contractors />)} />
             <Route path="/bookkeeping" element={guard(<Bookkeeping />)} />
+            <Route path="/invoices"    element={guard(<Invoices />)} />
             <Route path="/reports"     element={guard(<Reports />)} />
             <Route path="/billing"     element={guard(<Billing />)} />
             <Route path="/settings"    element={guard(<Settings />)} />
