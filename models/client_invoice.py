@@ -60,6 +60,10 @@ class ClientInvoice(db.Model):
     stripe_payment_link_id = db.Column(db.String(255), nullable=True)
     stripe_payment_link_url = db.Column(db.String(500), nullable=True)
 
+    # Journal that recognised this invoice's revenue once paid. Storing it
+    # keeps the posting idempotent and makes it reversible on void.
+    journal_id = db.Column(db.BigInteger, nullable=True)
+
     # =========================
     # LIFECYCLE
     # =========================
@@ -119,6 +123,7 @@ class ClientInvoice(db.Model):
             "balance_due": _money(self.balance_due),
             "notes": self.notes,
             "payment_link_url": self.stripe_payment_link_url,
+            "posted_to_books": self.journal_id is not None,
             "sent_at": self.sent_at.isoformat() if self.sent_at else None,
             "paid_at": self.paid_at.isoformat() if self.paid_at else None,
             "created_at": self.created_at.isoformat() if self.created_at else None,

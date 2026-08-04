@@ -194,6 +194,113 @@ def _ensure_payment_link(invoice: ClientInvoice) -> Optional[str]:
         return None
 
 
+# ------------------------------------------------------------------
+# Revenue recognition
+#
+# A paid invoice posts a balanced journal — debit cash, credit revenue — so it
+# flows into the P&L automatically. Two things keep this safe:
+#   * journal_id makes it idempotent (marking paid twice books revenue once)
+#   * source_type "invoice" keeps these out of the Bookkeeping transactions
+#     list, which filters on "manual", so they can't be edited or deleted
+#     there and get out of step with the invoice.
+# ------------------------------------------------------------------
+def _pick_account(company_id: int, account_type: str, preferred_code: str):
+    """Preferred default account for a type, else the first active one."""
+    from models.chart_of_accounts import Account
+
+    account = db.session.execute(
+        select(Account).where(
+            Account.company_id == company_id,
+            Account.account_code == preferred_code,
+            Account.account_type == account_type,
+            Account.is_active.is_(True),
+        )
+    ).scalar_one_or_none()
+    if account:
+        return account
+
+    return db.session.execute(
+        select(Account)
+        .where(
+            Account.company_id == company_id,
+            Account.account_type == account_type,
+            Account.is_active.is_(True),
+        )
+        .order_by(Account.account_code.asc())
+    ).scalars().first()
+
+
+def _post_invoice_journal(invoice: ClientInvoice, user_id: Any) -> Optional[int]:
+    """
+    Book the revenue for a paid invoice.
+
+    Returns the journal id, or None when it was skipped — a company that has
+    not set up its chart of accounts should still be able to mark an invoice
+    paid; the books simply do not move.
+    """
+    if invoice.journal_id:
+        return invoice.journal_id
+
+    amount = invoice.amount_paid or Decimal("0.00")
+    if amount <= 0:
+        return None
+
+    from models.ledger import Journal, LedgerEntry
+
+    cash = _pick_account(invoice.company_id, "asset", "1000")
+    revenue = _pick_account(invoice.company_id, "revenue", "4000")
+    if not cash or not revenue:
+        return None
+
+    posted_at = invoice.paid_at or datetime.now(timezone.utc)
+    journal = Journal(
+        company_id=invoice.company_id,
+        source_type="invoice",
+        source_id=f"invoice:{invoice.id}",
+        accounting_period=posted_at.strftime("%Y-%m"),
+        description=f"Invoice {invoice.invoice_number} — {invoice.client_name}"[:255],
+        posted_at=posted_at,
+        posted_by=user_id if isinstance(user_id, int) else None,
+    )
+    journal.entries = [
+        LedgerEntry(
+            company_id=invoice.company_id,
+            account_id=cash.id,
+            account_code=cash.account_code,
+            debit=amount,
+            credit=Decimal("0.00"),
+            memo=invoice.client_name[:255] if invoice.client_name else None,
+        ),
+        LedgerEntry(
+            company_id=invoice.company_id,
+            account_id=revenue.id,
+            account_code=revenue.account_code,
+            debit=Decimal("0.00"),
+            credit=amount,
+            memo=invoice.client_name[:255] if invoice.client_name else None,
+        ),
+    ]
+
+    db.session.add(journal)
+    db.session.flush()  # need the id before the caller commits
+    invoice.journal_id = journal.id
+    return journal.id
+
+
+def _reverse_invoice_journal(invoice: ClientInvoice) -> None:
+    """Un-book revenue when a paid invoice is voided."""
+    if not invoice.journal_id:
+        return
+
+    from models.ledger import Journal
+
+    journal = db.session.get(Journal, invoice.journal_id)
+    # Only ever remove a journal this invoice created.
+    if journal and journal.source_type == "invoice" and journal.company_id == invoice.company_id:
+        db.session.delete(journal)
+    invoice.journal_id = None
+
+
 def _invoice_email_html(invoice: ClientInvoice, company_name: str) -> str:
     rows = "".join(
         f"<tr>"
@@ -558,6 +665,7 @@ def mark_paid(invoice_id: int):
     invoice.amount_paid = amount
     invoice.status = "paid"
     invoice.paid_at = datetime.now(timezone.utc)
+    _post_invoice_journal(invoice, auth["user_id"])
 
     try:
         db.session.commit()
@@ -614,6 +722,7 @@ def sync_payment(invoice_id: int):
                 if amount_total is not None
                 else invoice.total
             )
+            _post_invoice_journal(invoice, auth["user_id"])
             try:
                 db.session.commit()
             except Exception as exc:  # noqa: BLE001
@@ -643,6 +752,8 @@ def delete_invoice(invoice_id: int):
             db.session.delete(invoice)
             outcome = "deleted"
         else:
+            # Voiding a paid invoice must take its revenue back out of the books.
+            _reverse_invoice_journal(invoice)
             invoice.status = "void"
             outcome = "voided"
         db.session.commit()
