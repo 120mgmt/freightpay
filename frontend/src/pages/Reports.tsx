@@ -1,19 +1,20 @@
 import { useCallback, useEffect, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { apiFetch } from "@/lib/api";
-import { Loader2, RefreshCw } from "lucide-react";
+import { Download, Loader2, RefreshCw } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-type ReportType = "profit-and-loss" | "balance-sheet" | "trial-balance" | "cash-flow";
+type ReportType = "profit-and-loss" | "balance-sheet" | "trial-balance" | "cash-flow" | "tax-1099";
 
 const TABS: { key: ReportType; label: string }[] = [
   { key: "profit-and-loss",  label: "Profit & Loss"  },
   { key: "balance-sheet",    label: "Balance Sheet"  },
   { key: "trial-balance",    label: "Trial Balance"  },
   { key: "cash-flow",        label: "Cash Flow"      },
+  { key: "tax-1099",         label: "1099 Forms"     },
 ];
 
 interface Line { account_code?: string; name?: string; amount?: string; debit?: string; credit?: string; net?: string }
@@ -35,6 +36,26 @@ interface ReportData {
   [key: string]: unknown;
 }
 
+interface Tax1099Contractor {
+  contractor_id?: number | null;
+  legal_name?: string | null;
+  business_name?: string | null;
+  email?: string | null;
+  city?: string | null;
+  state?: string | null;
+  tin_last4?: string | null;
+  w9_received?: boolean;
+  nec_total: string;
+  reimbursements_total?: string;
+  threshold_met?: boolean;
+}
+interface Tax1099Summary {
+  year: number;
+  contractor_count: number;
+  nec_total_all: string;
+  contractors: Tax1099Contractor[];
+}
+
 const money = (v: unknown) => {
   const n = Number(v);
   return isNaN(n)
@@ -44,6 +65,7 @@ const money = (v: unknown) => {
 
 const thisMonth = () => new Date().toISOString().slice(0, 7);
 const janThisYear = () => `${new Date().getFullYear()}-01`;
+const currentYear = () => new Date().getFullYear();
 
 const SectionTable = ({ title, section }: { title: string; section?: Section }) => {
   if (!section) return null;
@@ -89,6 +111,9 @@ const Reports = () => {
   const [from, setFrom] = useState(janThisYear());
   const [to, setTo] = useState(thisMonth());
   const [data, setData] = useState<ReportData | null>(null);
+  const [taxYear, setTaxYear] = useState(currentYear());
+  const [taxData, setTaxData] = useState<Tax1099Summary | null>(null);
+  const [exporting, setExporting] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [needsPlan, setNeedsPlan] = useState(false);
@@ -97,26 +122,55 @@ const Reports = () => {
     setLoading(true);
     setError("");
     setData(null);
+    setTaxData(null);
     try {
-      const qs = new URLSearchParams({ period_from: from, period_to: to });
-      const res = await apiFetch(`/reporting/${type}?${qs}`);
+      // 1099s are keyed by calendar year, not the P&L-style period range the
+      // other reports share, so this tab hits a different endpoint.
+      const path = type === "tax-1099" ? `/tax/1099/summary?year=${taxYear}` : `/reporting/${type}`;
+      const qs = type === "tax-1099" ? "" : `?${new URLSearchParams({ period_from: from, period_to: to })}`;
+      const res = await apiFetch(`${path}${qs}`);
       const json = await res.json().catch(() => ({}));
       if (res.status === 402 || json?.error === "plan_feature_unavailable") {
         setNeedsPlan(true);
       } else if (!res.ok) {
         setNeedsPlan(false);
-        setError(json.error || `Failed to load ${type} report.`);
+        setError(json.message || json.error || `Failed to load ${type} report.`);
       } else {
         setNeedsPlan(false);
-        setData(json);
+        if (type === "tax-1099") setTaxData(json);
+        else setData(json);
       }
     } catch {
       setError("Network error — check your connection.");
     }
     setLoading(false);
-  }, [from, to]);
+  }, [from, to, taxYear]);
 
   useEffect(() => { load(tab); }, [tab, load]);
+
+  const handleExport1099 = async () => {
+    setExporting(true);
+    setError("");
+    try {
+      const res = await apiFetch(`/tax/1099/export.csv?year=${taxYear}`);
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}));
+        setError(json.message || json.error || "Could not export 1099s.");
+        setExporting(false);
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `1099-nec_${taxYear}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      setError("Network error — check your connection.");
+    }
+    setExporting(false);
+  };
 
   return (
     <AppLayout active="Reports">
@@ -127,17 +181,33 @@ const Reports = () => {
             <p className="text-muted-foreground mt-1">Straight from your ledger — always current</p>
           </div>
           <div className="flex items-end gap-2">
-            <div>
-              <Label className="text-xs text-muted-foreground">From</Label>
-              <Input type="month" className="mt-1 h-9 bg-surface" value={from} onChange={(e) => setFrom(e.target.value)} />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">To</Label>
-              <Input type="month" className="mt-1 h-9 bg-surface" value={to} onChange={(e) => setTo(e.target.value)} />
-            </div>
+            {tab === "tax-1099" ? (
+              <div>
+                <Label className="text-xs text-muted-foreground">Tax year</Label>
+                <Input type="number" step="1" className="mt-1 h-9 bg-surface w-24" value={taxYear}
+                  onChange={(e) => setTaxYear(Number(e.target.value) || currentYear())} />
+              </div>
+            ) : (
+              <>
+                <div>
+                  <Label className="text-xs text-muted-foreground">From</Label>
+                  <Input type="month" className="mt-1 h-9 bg-surface" value={from} onChange={(e) => setFrom(e.target.value)} />
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">To</Label>
+                  <Input type="month" className="mt-1 h-9 bg-surface" value={to} onChange={(e) => setTo(e.target.value)} />
+                </div>
+              </>
+            )}
             <Button variant="outline" size="sm" className="h-9" onClick={() => load(tab)}>
               <RefreshCw size={14} className="mr-1" /> Run
             </Button>
+            {tab === "tax-1099" && (
+              <Button size="sm" className="h-9" onClick={handleExport1099} disabled={exporting || !taxData}>
+                {exporting ? <Loader2 size={14} className="animate-spin mr-1" /> : <Download size={14} className="mr-1" />}
+                Export CSV
+              </Button>
+            )}
           </div>
         </div>
 
@@ -251,6 +321,62 @@ const Reports = () => {
             <StatCard label="Financing" value={data.financing_cash_flow} />
             <StatCard label="Net Change in Cash" value={data.net_change_in_cash} accent />
           </div>
+        )}
+
+        {!loading && !error && taxData && tab === "tax-1099" && (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+              <StatCard label={`${taxData.year} contractors paid`} value={taxData.contractor_count} />
+              <StatCard label="Total NEC (all contractors)" value={taxData.nec_total_all} accent />
+            </div>
+            <p className="text-xs text-muted-foreground px-1 mb-3">
+              A contractor is 1099-NEC eligible once paid $600 or more in the year — flagged below.
+            </p>
+            <div className="rounded-2xl border border-border overflow-hidden bg-card shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-surface-muted border-b border-border">
+                      {["Contractor", "Location", "W-9", "NEC Total", "Files 1099"].map((h) => (
+                        <th key={h} className="text-left px-4 py-2.5 text-xs text-muted-foreground font-semibold uppercase tracking-wider">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {taxData.contractors.length === 0 && (
+                      <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">
+                        No contractor payments recorded for {taxData.year}.
+                      </td></tr>
+                    )}
+                    {taxData.contractors.map((c, i) => (
+                      <tr key={c.contractor_id ?? i} className="border-b border-border/60 last:border-0">
+                        <td className="px-4 py-2.5 font-medium">
+                          {c.legal_name || "—"}
+                          {c.business_name && <div className="text-xs text-muted-foreground">{c.business_name}</div>}
+                        </td>
+                        <td className="px-4 py-2.5 text-muted-foreground">
+                          {[c.city, c.state].filter(Boolean).join(", ") || "—"}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className={`px-2 py-0.5 rounded text-xs font-medium ${c.w9_received ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
+                            {c.w9_received ? "On file" : "Missing"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-2.5 font-semibold">{money(c.nec_total)}</td>
+                        <td className="px-4 py-2.5">
+                          {c.threshold_met ? (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-primary/10 text-primary">Yes — $600+</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded text-xs font-medium bg-muted text-muted-foreground">Under $600</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
         )}
       </div>
     </AppLayout>

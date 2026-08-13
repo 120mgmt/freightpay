@@ -132,50 +132,79 @@ def _coalesce_list(*candidates: Any) -> list[Any]:
     return []
 
 
+def _parse_date_like(value: Any) -> datetime | None:
+    """A plain date/datetime string, OR a "<start> to <end>" period range
+    (the shape the live frontend sends) — returns the end of the range."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    text_value = str(value).strip()
+    if not text_value:
+        return None
+    if " to " in text_value:
+        text_value = text_value.split(" to ")[-1].strip()
+    for fmt in (
+        "%Y-%m-%d",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%dT%H:%M:%S.%f",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%Y-%m-%dT%H:%M:%S.%f%z",
+    ):
+        try:
+            return datetime.strptime(text_value, fmt)
+        except ValueError:
+            continue
+    try:
+        return datetime.fromisoformat(text_value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
 def _extract_run_date(row: dict[str, Any]) -> datetime | None:
-    candidates = [
+    # payload_json is where the real request body lives — the live
+    # payroll_runs schema (migrations/versions/20260401_payroll_runs.py) has
+    # no "period", "pay_date" or "period_end" columns at all, only
+    # run_id/company_id/created_at/status/payload_json/results_json/
+    # finalized/finalized_at. The frontend payload only ever carries a single
+    # "period" string shaped "<start> to <end>".
+    payload = _coalesce_dict(row.get("payload_json"), row.get("payload"))
+
+    # Priority 1: an explicit date the run actually declares — this is what
+    # tax-year classification must key off, including for a settlement
+    # entered after the fact for an earlier period.
+    for candidate in (
         row.get("pay_date"),
         row.get("period_end"),
         row.get("check_date"),
-        row.get("created_at"),
-        row.get("executed_at"),
-        row.get("updated_at"),
-    ]
+        payload.get("pay_date"),
+        payload.get("period_end"),
+        payload.get("period_start"),
+        row.get("period"),
+        payload.get("period"),
+    ):
+        parsed = _parse_date_like(candidate)
+        if parsed is not None:
+            return parsed
 
-    for candidate in candidates:
+    # Priority 2 (last resort): when a run declares no period at all, fall
+    # back to when the record itself was touched. created_at/finalized_at
+    # are epoch-seconds BigInteger, not text.
+    for candidate in (row.get("created_at"), row.get("executed_at"), row.get("updated_at")):
         if candidate is None:
             continue
         if isinstance(candidate, datetime):
             return candidate
-        value = str(candidate).strip()
-        if not value:
-            continue
-        for fmt in (
-            "%Y-%m-%d",
-            "%Y-%m-%d %H:%M:%S",
-            "%Y-%m-%dT%H:%M:%S",
-            "%Y-%m-%dT%H:%M:%S.%f",
-            "%Y-%m-%dT%H:%M:%S%z",
-            "%Y-%m-%dT%H:%M:%S.%f%z",
-        ):
+        if isinstance(candidate, (int, float)) and not isinstance(candidate, bool):
             try:
-                return datetime.strptime(value, fmt)
-            except ValueError:
+                return datetime.fromtimestamp(candidate, tz=timezone.utc)
+            except (OverflowError, OSError, ValueError):
                 continue
-        try:
-            return datetime.fromisoformat(value.replace("Z", "+00:00"))
-        except ValueError:
-            continue
+        parsed = _parse_date_like(candidate)
+        if parsed is not None:
+            return parsed
 
-    period = row.get("period")
-    if period:
-        text_value = str(period)
-        if "to" in text_value:
-            right = text_value.split("to")[-1].strip()
-            try:
-                return datetime.strptime(right, "%Y-%m-%d")
-            except ValueError:
-                return None
     return None
 
 
@@ -213,11 +242,8 @@ def _extract_candidate_lists(row: dict[str, Any]) -> list[dict[str, Any]]:
         row.get("output_json"),
     )
 
-    candidates: list[Any] = []
-
-    for source in (results, payload):
-        if not source:
-            continue
+    def _pull(source: dict[str, Any]) -> list[Any]:
+        found: list[Any] = []
         for key in (
             "contractors",
             "results",
@@ -230,8 +256,15 @@ def _extract_candidate_lists(row: dict[str, Any]) -> list[dict[str, Any]]:
         ):
             value = source.get(key)
             if isinstance(value, list):
-                candidates.extend(value)
+                found.extend(value)
+        return found
 
+    # results_json (the computed settlement — gross/net/accessorials/
+    # deductions after run_payroll()) and payload_json (the raw request that
+    # produced it) describe the SAME payment. Pulling list-shaped keys from
+    # both, as this used to do, summed each contractor's pay twice. Only the
+    # payload is inspected when a run genuinely has no results yet.
+    candidates: list[Any] = _pull(results) if results else _pull(payload)
     if not candidates:
         for key in (
             "contractors_json",
@@ -323,12 +356,16 @@ def _csv_safe(value: Any) -> str:
 
 
 def _fetch_payroll_runs(company_id: int, year: int) -> list[dict[str, Any]]:
+    # payroll_runs has no "id" column — its primary key is run_id (a UUID
+    # string, per migrations/versions/20260401_payroll_runs.py), so ordering
+    # by it wouldn't be chronological anyway. created_at is the real
+    # timestamp column.
     query = text(
         """
         SELECT *
         FROM payroll_runs
         WHERE company_id = :company_id
-        ORDER BY id DESC
+        ORDER BY created_at DESC
         """
     )
     rows = db.session.execute(query, {"company_id": company_id}).mappings().all()
