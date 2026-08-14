@@ -230,6 +230,64 @@ def _pick_account(company_id: int, account_type: str, preferred_code: str):
     ).scalars().first()
 
 
+def _apply_payment(invoice: ClientInvoice, amount: Decimal, user_id: Any = None) -> None:
+    """Mark an invoice paid and book the revenue. Shared by mark-paid, the
+    manual sync-payment poll, and the Stripe webhook so all three paths
+    apply a payment identically."""
+    invoice.amount_paid = amount
+    invoice.status = "paid"
+    invoice.paid_at = datetime.now(timezone.utc)
+    _post_invoice_journal(invoice, user_id)
+
+
+def apply_invoice_checkout_payment(session_obj: dict) -> bool:
+    """
+    Entry point for billing/webhooks.py: a checkout.session.completed (or
+    .async_payment_succeeded) event whose metadata identifies one of our
+    invoice payment links (set in _ensure_payment_link) marks that invoice
+    paid immediately, instead of requiring the manual "check payment" click.
+
+    Returns False when the session isn't for one of our invoices — Stripe's
+    subscription checkout sessions carry no such metadata — so the webhook
+    can fall through to its normal subscription handling. Commits its own
+    transaction; the caller only needs to catch exceptions.
+    """
+    metadata = session_obj.get("metadata") or {}
+    invoice_id_raw = metadata.get("ledgerhaul_invoice_id")
+    if not invoice_id_raw:
+        return False
+    try:
+        invoice_id = int(invoice_id_raw)
+    except (TypeError, ValueError):
+        return False
+
+    if session_obj.get("payment_status") != "paid":
+        return False
+
+    invoice = db.session.get(ClientInvoice, invoice_id)
+    if not invoice:
+        return False
+
+    # Defense in depth: the metadata is ours, but confirm the company still
+    # matches before mutating anything.
+    company_meta = metadata.get("ledgerhaul_company_id")
+    if company_meta and str(invoice.company_id) != str(company_meta):
+        return False
+
+    if invoice.status == "paid":
+        return True  # already applied — idempotent against Stripe retries
+
+    amount_total = session_obj.get("amount_total")
+    amount = (
+        (Decimal(str(amount_total)) / 100).quantize(TWOPLACES)
+        if amount_total is not None
+        else invoice.total
+    )
+    _apply_payment(invoice, amount)
+    db.session.commit()
+    return True
+
+
 def _post_invoice_journal(invoice: ClientInvoice, user_id: Any) -> Optional[int]:
     """
     Book the revenue for a paid invoice.
@@ -662,10 +720,7 @@ def mark_paid(invoice_id: int):
     if amount <= 0:
         return _json_error("Payment amount must be greater than zero", 400, "VALIDATION_ERROR")
 
-    invoice.amount_paid = amount
-    invoice.status = "paid"
-    invoice.paid_at = datetime.now(timezone.utc)
-    _post_invoice_journal(invoice, auth["user_id"])
+    _apply_payment(invoice, amount, auth["user_id"])
 
     try:
         db.session.commit()
@@ -683,8 +738,10 @@ def sync_payment(invoice_id: int):
     """
     Ask Stripe whether the payment link has been paid.
 
-    Avoids requiring a webhook endpoint to be configured — the client can hit
-    this whenever they want to check, and the UI calls it on demand.
+    The Stripe webhook (billing/webhooks.py -> apply_invoice_checkout_payment)
+    applies payment automatically once it's configured. This stays as a
+    manual fallback — for a company that hasn't set the webhook up yet, or
+    for a client who just wants to confirm right now instead of waiting.
     """
     auth, err = _require_auth()
     if err:
@@ -714,15 +771,13 @@ def sync_payment(invoice_id: int):
 
     for session in (sessions.get("data") or []):
         if session.get("payment_status") == "paid":
-            invoice.status = "paid"
-            invoice.paid_at = datetime.now(timezone.utc)
             amount_total = session.get("amount_total")
-            invoice.amount_paid = (
+            amount = (
                 (Decimal(str(amount_total)) / 100).quantize(TWOPLACES)
                 if amount_total is not None
                 else invoice.total
             )
-            _post_invoice_journal(invoice, auth["user_id"])
+            _apply_payment(invoice, amount, auth["user_id"])
             try:
                 db.session.commit()
             except Exception as exc:  # noqa: BLE001
