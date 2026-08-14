@@ -178,20 +178,44 @@ def _ensure_payment_link(invoice: ClientInvoice) -> Optional[str]:
             currency=(invoice.currency or "USD").lower(),
             product_data={"name": f"Invoice {invoice.invoice_number}"},
         )
-        link = stripe.PaymentLink.create(
-            line_items=[{"price": price["id"], "quantity": 1}],
-            metadata={
+        link_kwargs = {
+            "line_items": [{"price": price["id"], "quantity": 1}],
+            "metadata": {
                 "ledgerhaul_invoice_id": str(invoice.id),
                 "ledgerhaul_company_id": str(invoice.company_id),
                 "invoice_number": invoice.invoice_number,
             },
-        )
+        }
+        link = _create_payment_link_compat(stripe, link_kwargs)
         invoice.stripe_payment_link_id = link["id"]
         invoice.stripe_payment_link_url = link["url"]
         return link["url"]
     except Exception:
         # A Stripe problem must not block sending the invoice.
         return None
+
+
+def _create_payment_link_compat(stripe, kwargs: dict):
+    """
+    Create the Payment Link with Adaptive Pricing disabled, so a buyer in
+    any country only ever sees the invoice's own currency — no picker, no
+    ambiguity about what was actually charged. Same proven pattern as
+    _create_checkout_session_compat in billing/checkout.py, applied here
+    because Payment Links (unlike subscription Checkout Sessions) had never
+    had this disabled: a buyer geolocated outside the US could choose to pay
+    in their local currency, and the webhook would have recorded that raw
+    number as if it were USD.
+
+    Falls back without the parameter if the account/API version doesn't
+    recognise it, matching the same fallback billing/checkout.py relies on.
+    """
+    try:
+        return stripe.PaymentLink.create(**kwargs, adaptive_pricing={"enabled": False})
+    except Exception as e:
+        msg = str(e).lower()
+        if "adaptive_pricing" in msg and ("unknown parameter" in msg or "received unknown" in msg):
+            return stripe.PaymentLink.create(**kwargs)
+        raise
 
 
 # ------------------------------------------------------------------
@@ -277,15 +301,35 @@ def apply_invoice_checkout_payment(session_obj: dict) -> bool:
     if invoice.status == "paid":
         return True  # already applied — idempotent against Stripe retries
 
-    amount_total = session_obj.get("amount_total")
-    amount = (
-        (Decimal(str(amount_total)) / 100).quantize(TWOPLACES)
-        if amount_total is not None
-        else invoice.total
-    )
-    _apply_payment(invoice, amount)
+    _apply_payment(invoice, _amount_from_session(session_obj, invoice))
     db.session.commit()
     return True
+
+
+def _amount_from_session(session_obj: dict, invoice: ClientInvoice) -> Decimal:
+    """
+    The dollar amount to record as paid, from a Stripe checkout session.
+
+    Payment Links are now created with Adaptive Pricing disabled (see
+    _create_payment_link_compat), so a session's amount_total should always
+    be in the invoice's own currency. This is still checked rather than
+    assumed: if a session ever comes back in a different currency (an older
+    link created before that fix, or some payment method that bypasses it),
+    amount_total is in THAT currency's cents, not the invoice's — dividing
+    it by 100 and recording it as-is would silently book a wrong dollar
+    figure (e.g. PKR 288 recorded as $288 instead of the $1 actually owed).
+    Falling back to the invoice's own total keeps the books correct even
+    when the received currency can't be trusted.
+    """
+    session_currency = str(session_obj.get("currency") or "").strip().upper()
+    invoice_currency = str(invoice.currency or "USD").strip().upper()
+    amount_total = session_obj.get("amount_total")
+
+    if amount_total is None:
+        return invoice.total
+    if session_currency and session_currency != invoice_currency:
+        return invoice.total
+    return (Decimal(str(amount_total)) / 100).quantize(TWOPLACES)
 
 
 def _post_invoice_journal(invoice: ClientInvoice, user_id: Any) -> Optional[int]:
@@ -771,13 +815,7 @@ def sync_payment(invoice_id: int):
 
     for session in (sessions.get("data") or []):
         if session.get("payment_status") == "paid":
-            amount_total = session.get("amount_total")
-            amount = (
-                (Decimal(str(amount_total)) / 100).quantize(TWOPLACES)
-                if amount_total is not None
-                else invoice.total
-            )
-            _apply_payment(invoice, amount, auth["user_id"])
+            _apply_payment(invoice, _amount_from_session(session, invoice), auth["user_id"])
             try:
                 db.session.commit()
             except Exception as exc:  # noqa: BLE001
