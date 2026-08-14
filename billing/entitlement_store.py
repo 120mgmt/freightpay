@@ -24,34 +24,14 @@ def _now() -> int:
     return int(time.time())
 
 
-def _init() -> None:
-    ddl = """
-    CREATE TABLE IF NOT EXISTS customer_subscriptions (
-        customer_id TEXT PRIMARY KEY,
-        active BOOLEAN NOT NULL,
-        status TEXT,
-        subscription_id TEXT,
-        price_id TEXT,
-        price_ids_json TEXT,
-        current_period_end BIGINT,
-        entitlements_json TEXT,
-        updated_at BIGINT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_customer_subscriptions_updated_at
-        ON customer_subscriptions(updated_at);
-    CREATE INDEX IF NOT EXISTS idx_customer_subscriptions_subscription_id
-        ON customer_subscriptions(subscription_id);
-    """
-    try:
-        with db.engine.begin() as conn:
-            for stmt in [s.strip() for s in ddl.split(";") if s.strip()]:
-                conn.execute(text(stmt))
-    except Exception:
-        # do not crash import; calling code will surface issues via endpoints/logs
-        pass
-
-
-_init()
+# The table (customer_id PK, active, status, subscription_id, price_id,
+# price_ids_json, current_period_end, entitlements_json, updated_at) is
+# created by migrations/versions/20260419_customer_subscriptions.py. It used
+# to self-create here via a raw "CREATE TABLE IF NOT EXISTS" run at module
+# IMPORT time — before any Flask app context exists, so db.engine access
+# raised "working outside of application context" and the bare except
+# swallowed it. The table was never created: every webhook-driven entitlement
+# upsert and every subscription_gate.py cache lookup silently failed.
 
 
 def record_stripe_event_id(event_id: str, *, received_at: Optional[int] = None) -> bool:

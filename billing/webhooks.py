@@ -79,28 +79,12 @@ def _webhook_secret() -> str:
 # -----------------------------
 # DURABLE IDEMPOTENCY (DB)
 # -----------------------------
-def _init_event_log() -> None:
-    ddl = """
-    CREATE TABLE IF NOT EXISTS stripe_webhook_events (
-        event_id TEXT PRIMARY KEY,
-        event_type TEXT,
-        customer_id TEXT,
-        company_id INTEGER,
-        received_at BIGINT NOT NULL
-    );
-    CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_customer_id
-        ON stripe_webhook_events (customer_id);
-    CREATE INDEX IF NOT EXISTS idx_stripe_webhook_events_company_id
-        ON stripe_webhook_events (company_id);
-    """
-    try:
-        with db.engine.begin() as conn:
-            for stmt in [s.strip() for s in ddl.split(";") if s.strip()]:
-                conn.execute(text(stmt))
-    except Exception:
-        pass
-
-
+# The table (event_id PK, event_type, customer_id, company_id, received_at)
+# is created by migrations/versions/20260419_stripe_webhook_ev.py. It used
+# to self-create here with a raw "CREATE TABLE IF NOT EXISTS" run at module
+# IMPORT time — before any Flask app context exists, so db.engine access
+# raised "working outside of application context" and the bare except
+# swallowed it. The table was never created; every event looked new.
 def _event_already_processed(event_id: str) -> bool:
     if not event_id:
         return False
@@ -138,9 +122,6 @@ def _log_event(*, event_id: str, event_type: str, customer_id: Optional[str], co
             )
     except Exception:
         pass
-
-
-_init_event_log()
 
 
 # -----------------------------
@@ -338,6 +319,18 @@ def stripe_webhook() -> Tuple[Response, int]:
 
             _log_event(event_id=event_id, event_type=event_type, customer_id=customer_id, company_id=company_id)
             return jsonify({"received": True, "type": event_type}), 200
+
+        # A client invoice payment link, not a subscription checkout — the
+        # metadata (set in routes/invoices.py when the link is created) is
+        # how these two are told apart. Handled first and returns early;
+        # invoice payment links never carry a subscription to apply.
+        if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
+            if (obj.get("metadata") or {}).get("ledgerhaul_invoice_id"):
+                from routes.invoices import apply_invoice_checkout_payment
+
+                apply_invoice_checkout_payment(obj)
+                _log_event(event_id=event_id, event_type=event_type, customer_id=None, company_id=_company_id_from_metadata(obj))
+                return jsonify({"received": True, "type": event_type, "invoice_payment": True}), 200
 
         # Checkout completed → fetch subscription, apply entitlements (multi-price)
         if event_type in {"checkout.session.completed", "checkout.session.async_payment_succeeded"}:
