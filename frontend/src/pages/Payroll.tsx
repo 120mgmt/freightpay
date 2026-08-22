@@ -92,6 +92,17 @@ const STATUS_STYLES: Record<string, string> = {
   failed:    "bg-red-100 text-red-700",
 };
 
+// Normalizes numeric text input so a locale/keyboard decimal comma (or any
+// stray character) can't silently zero out a value. Native <input type="number">
+// rejects "0,60" as invalid and reports e.target.value as "" on some mobile
+// keyboards/locales — this keeps the field a plain text input under our control.
+const sanitizeDecimal = (raw: string) => {
+  const normalized = raw.replace(/,/g, ".").replace(/[^0-9.]/g, "");
+  const firstDot = normalized.indexOf(".");
+  if (firstDot === -1) return normalized;
+  return normalized.slice(0, firstDot + 1) + normalized.slice(firstDot + 1).replace(/\./g, "");
+};
+
 const money = (v: unknown) => {
   const n = Number(v);
   return isNaN(n)
@@ -415,18 +426,18 @@ const Payroll = () => {
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                         <div>
                           <Label className="text-xs text-muted-foreground">Flat pay ($)</Label>
-                          <Input type="number" step="0.01" min="0" className="mt-1 h-9 bg-surface" value={r.flatPay}
-                            onChange={(e) => setRow(r.contractor_id, "flatPay", e.target.value)} placeholder="0.00" />
+                          <Input type="text" inputMode="decimal" className="mt-1 h-9 bg-surface" value={r.flatPay}
+                            onChange={(e) => setRow(r.contractor_id, "flatPay", sanitizeDecimal(e.target.value))} placeholder="0.00" />
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Miles</Label>
-                          <Input type="number" step="1" min="0" className="mt-1 h-9 bg-surface" value={r.miles}
-                            onChange={(e) => setRow(r.contractor_id, "miles", e.target.value)} placeholder="0" />
+                          <Input type="text" inputMode="decimal" className="mt-1 h-9 bg-surface" value={r.miles}
+                            onChange={(e) => setRow(r.contractor_id, "miles", sanitizeDecimal(e.target.value))} placeholder="0" />
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Rate per mile ($)</Label>
-                          <Input type="number" step="0.001" min="0" className="mt-1 h-9 bg-surface" value={r.ratePerMile}
-                            onChange={(e) => setRow(r.contractor_id, "ratePerMile", e.target.value)} placeholder="0.60" />
+                          <Input type="text" inputMode="decimal" className="mt-1 h-9 bg-surface" value={r.ratePerMile}
+                            onChange={(e) => setRow(r.contractor_id, "ratePerMile", sanitizeDecimal(e.target.value))} placeholder="0.60" />
                         </div>
                         <div>
                           <Label className="text-xs text-muted-foreground">Mileage pay</Label>
@@ -455,8 +466,8 @@ const Payroll = () => {
                                   className="h-9 rounded-md border border-border bg-surface px-2 text-sm outline-none focus:border-primary flex-1 max-w-xs">
                                   {ACCESSORIAL_TYPES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
                                 </select>
-                                <Input type="number" step="0.01" min="0" className="h-9 w-32 bg-surface" value={it.amount}
-                                  onChange={(e) => setItem(r.contractor_id, "accessorials", idx, "amount", e.target.value)} placeholder="0.00" />
+                                <Input type="text" inputMode="decimal" className="h-9 w-32 bg-surface" value={it.amount}
+                                  onChange={(e) => setItem(r.contractor_id, "accessorials", idx, "amount", sanitizeDecimal(e.target.value))} placeholder="0.00" />
                                 <button type="button" onClick={() => removeItem(r.contractor_id, "accessorials", idx)}
                                   className="text-muted-foreground hover:text-destructive" title="Remove">
                                   <X size={15} />
@@ -486,8 +497,8 @@ const Payroll = () => {
                                   className="h-9 rounded-md border border-border bg-surface px-2 text-sm outline-none focus:border-primary flex-1 max-w-xs">
                                   {DEDUCTION_TYPES.map(([k, label]) => <option key={k} value={k}>{label}</option>)}
                                 </select>
-                                <Input type="number" step="0.01" min="0" className="h-9 w-32 bg-surface" value={it.amount}
-                                  onChange={(e) => setItem(r.contractor_id, "deductions", idx, "amount", e.target.value)} placeholder="0.00" />
+                                <Input type="text" inputMode="decimal" className="h-9 w-32 bg-surface" value={it.amount}
+                                  onChange={(e) => setItem(r.contractor_id, "deductions", idx, "amount", sanitizeDecimal(e.target.value))} placeholder="0.00" />
                                 <button type="button" onClick={() => removeItem(r.contractor_id, "deductions", idx)}
                                   className="text-muted-foreground hover:text-destructive" title="Remove">
                                   <X size={15} />

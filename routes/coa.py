@@ -395,3 +395,190 @@ def delete_transaction(journal_id: int):
         return jsonify({"error": "delete_failed", "detail": str(e)}), 500
 
     return jsonify({"status": "deleted", "id": journal_id}), 200
+
+
+# ============================================================
+# Historical records import — bulk CSV of past income/expenses
+# ============================================================
+
+def _match_account(accounts: list[Account], text: str, account_type: str) -> Account | None:
+    if not text:
+        return None
+    needle = text.strip().lower()
+    for acct in accounts:
+        if acct.account_type == account_type and acct.name.strip().lower() == needle:
+            return acct
+    return None
+
+
+@coa_bp.route("/import/preview", methods=["POST"])
+@require_plan("bookkeeping")
+def import_preview():
+    """
+    Parses an uploaded CSV of historical transactions and tries to match each
+    row's category text to an existing chart-of-accounts entry. Nothing is
+    written to the ledger here — the caller reviews/corrects the rows and
+    then calls /coa/import/commit with the finalized list.
+    """
+    try:
+        company_id = _require_company_id()
+    except ValueError:
+        return jsonify({"error": "company_id_required"}), 400
+
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"error": "file_required", "detail": "Attach a CSV file."}), 400
+
+    from services.historical_import import parse_import_csv
+
+    csv_bytes = upload.read()
+    parsed = parse_import_csv(csv_bytes)
+    if parsed["error"] and not parsed["rows"]:
+        return jsonify({"error": "parse_failed", "detail": parsed["error"]}), 400
+
+    accounts = list(
+        db.session.execute(
+            select(Account).where(Account.company_id == company_id, Account.is_active.is_(True))
+        ).scalars().all()
+    )
+    expense_accounts = [a for a in accounts if a.account_type == "expense"]
+    revenue_accounts = [a for a in accounts if a.account_type == "revenue"]
+    asset_accounts = [a for a in accounts if a.account_type == "asset"]
+
+    rows = []
+    for row in parsed["rows"]:
+        matched = None
+        if not row["error"] and row["type"]:
+            expected_type = "expense" if row["type"] == "expense" else "revenue"
+            candidates = expense_accounts if row["type"] == "expense" else revenue_accounts
+            acct = _match_account(candidates, row.get("category_text") or "", expected_type)
+            if acct:
+                matched = acct.account_code
+        rows.append({**row, "account_code": matched})
+
+    return jsonify(
+        {
+            "rows": rows,
+            "file_warning": parsed["error"],
+            "expense_accounts": [a.as_dict() for a in expense_accounts],
+            "revenue_accounts": [a.as_dict() for a in revenue_accounts],
+            "asset_accounts": [a.as_dict() for a in asset_accounts],
+        }
+    ), 200
+
+
+@coa_bp.route("/import/commit", methods=["POST"])
+@require_plan("bookkeeping")
+def import_commit():
+    """
+    Posts the reviewed/corrected rows from /coa/import/preview as manual
+    transactions, one balanced journal per row, in a single all-or-nothing
+    batch. Body: {"payment_account_code": "1000", "rows": [{date, amount,
+    type, description, account_code, vendor}, ...]}
+    """
+    try:
+        company_id = _require_company_id()
+    except ValueError:
+        return jsonify({"error": "company_id_required"}), 400
+
+    data = request.get_json(silent=True) or {}
+    payment_code = str(data.get("payment_account_code") or "").strip()
+    rows = data.get("rows")
+    if not payment_code:
+        return jsonify({"error": "payment_account_code_required"}), 400
+    if not isinstance(rows, list) or not rows:
+        return jsonify({"error": "rows_required"}), 400
+    if len(rows) > 2000:
+        return jsonify({"error": "too_many_rows"}), 400
+
+    payment = db.session.execute(
+        select(Account).where(Account.company_id == company_id, Account.account_code == payment_code)
+    ).scalar_one_or_none()
+    if not payment:
+        return jsonify({"error": "account_not_found", "account_code": payment_code}), 404
+    if payment.account_type != "asset":
+        return jsonify({"error": "wrong_account_type", "detail": "payment_account_code must be an asset account."}), 400
+
+    try:
+        from utils.auth import get_current_user
+        me = get_current_user()
+        posted_by = me.id if me else None
+    except Exception:
+        posted_by = None
+
+    journals = []
+    errors = []
+    for i, row in enumerate(rows):
+        idx = row.get("row_index", i + 1)
+        kind = str(row.get("type") or "").strip().lower()
+        if kind not in ("expense", "income"):
+            errors.append({"row_index": idx, "error": "invalid_type"})
+            continue
+
+        date_str = str(row.get("date") or "").strip()
+        try:
+            txn_date = datetime.strptime(date_str, "%Y-%m-%d").replace(hour=12, tzinfo=timezone.utc)
+        except Exception:
+            errors.append({"row_index": idx, "error": "invalid_date"})
+            continue
+
+        try:
+            amount = Decimal(str(row.get("amount"))).quantize(Decimal("0.01"))
+        except (InvalidOperation, TypeError):
+            errors.append({"row_index": idx, "error": "invalid_amount"})
+            continue
+        if amount <= 0:
+            errors.append({"row_index": idx, "error": "invalid_amount"})
+            continue
+
+        description = str(row.get("description") or "").strip()
+        if not description:
+            errors.append({"row_index": idx, "error": "description_required"})
+            continue
+
+        code = str(row.get("account_code") or "").strip()
+        if not code:
+            errors.append({"row_index": idx, "error": "category_required"})
+            continue
+        category = db.session.execute(
+            select(Account).where(Account.company_id == company_id, Account.account_code == code)
+        ).scalar_one_or_none()
+        expected_type = "expense" if kind == "expense" else "revenue"
+        if not category or category.account_type != expected_type:
+            errors.append({"row_index": idx, "error": "account_not_found", "account_code": code})
+            continue
+
+        vendor = (str(row.get("vendor") or "").strip() or None)
+        journal = Journal(
+            company_id=company_id,
+            source_type="manual",
+            source_id=f"{kind}:{uuid.uuid4()}",
+            accounting_period=date_str[:7],
+            description=f"(Imported) {description}"[:255],
+            posted_at=txn_date,
+            posted_by=posted_by,
+        )
+        debit_acct, credit_acct = (category, payment) if kind == "expense" else (payment, category)
+        journal.entries = [
+            LedgerEntry(
+                company_id=company_id, account_id=debit_acct.id, account_code=debit_acct.account_code,
+                debit=amount, credit=Decimal("0.00"), memo=vendor,
+            ),
+            LedgerEntry(
+                company_id=company_id, account_id=credit_acct.id, account_code=credit_acct.account_code,
+                debit=Decimal("0.00"), credit=amount, memo=vendor,
+            ),
+        ]
+        journals.append(journal)
+
+    if errors:
+        return jsonify({"error": "validation_failed", "row_errors": errors, "imported": 0}), 400
+
+    try:
+        db.session.add_all(journals)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": "import_failed", "detail": str(e)}), 500
+
+    return jsonify({"imported": len(journals)}), 201
