@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AppLayout from "@/components/AppLayout";
 import { apiFetch } from "@/lib/api";
-import { Loader2, RefreshCw, Layers, Plus, X, Trash2, ArrowDownCircle, ArrowUpCircle } from "lucide-react";
+import { Loader2, RefreshCw, Layers, Plus, X, Trash2, ArrowDownCircle, ArrowUpCircle, Upload } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
@@ -27,6 +27,18 @@ interface Txn {
   category?: { account_code: string; name: string } | null;
   paid_via?: { account_code: string; name: string } | null;
   vendor?: string | null;
+}
+
+interface ImportRow {
+  row_index: number;
+  date: string | null;
+  description: string | null;
+  amount: string | null;
+  type: "expense" | "income" | null;
+  category_text: string | null;
+  vendor: string | null;
+  error: string | null;
+  account_code: string | null;
 }
 
 const TYPE_ORDER = ["asset", "liability", "equity", "revenue", "expense"];
@@ -80,6 +92,16 @@ const Bookkeeping = () => {
     description: "",
     vendor: "",
   });
+
+  // historical records import
+  const [showImport, setShowImport] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importPaymentAccount, setImportPaymentAccount] = useState("");
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [importFileWarning, setImportFileWarning] = useState("");
+  const [previewing, setPreviewing] = useState(false);
+  const [committing, setCommitting] = useState(false);
+  const importFileInput = useRef<HTMLInputElement>(null);
 
   const load = async () => {
     setLoading(true);
@@ -250,6 +272,82 @@ const Bookkeeping = () => {
     setBusyTxn(null);
   };
 
+  const openImport = () => {
+    setShowImport(true);
+    setImportFile(null);
+    setImportRows([]);
+    setImportFileWarning("");
+    setImportPaymentAccount(assetAccounts[0]?.account_code || "");
+    setError("");
+    setMsg("");
+  };
+
+  const handleImportPreview = async () => {
+    if (!importFile) return;
+    setPreviewing(true);
+    setError("");
+    setImportRows([]);
+    try {
+      const form = new FormData();
+      form.append("file", importFile);
+      const res = await apiFetch("/coa/import/preview", { method: "POST", body: form });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setImportRows(data.rows || []);
+        setImportFileWarning(data.file_warning || "");
+      } else {
+        setError(data.detail || data.error || "Could not read that file.");
+      }
+    } catch {
+      setError("Network error — check your connection.");
+    }
+    setPreviewing(false);
+  };
+
+  const setImportRowAccount = (rowIndex: number, code: string) =>
+    setImportRows((rs) => rs.map((r) => (r.row_index === rowIndex ? { ...r, account_code: code } : r)));
+
+  const importReadyRows = importRows.filter((r) => !r.error && r.account_code && r.date && r.amount && r.type);
+  const importSkippedCount = importRows.length - importReadyRows.length;
+
+  const handleImportCommit = async () => {
+    if (!importPaymentAccount || importReadyRows.length === 0) return;
+    setCommitting(true);
+    setError("");
+    setMsg("");
+    try {
+      const res = await apiFetch("/coa/import/commit", {
+        method: "POST",
+        body: JSON.stringify({
+          payment_account_code: importPaymentAccount,
+          rows: importReadyRows.map((r) => ({
+            row_index: r.row_index,
+            date: r.date,
+            amount: r.amount,
+            type: r.type,
+            description: r.description,
+            account_code: r.account_code,
+            vendor: r.vendor,
+          })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setMsg(`Imported ${data.imported} transaction${data.imported === 1 ? "" : "s"}.`);
+        setShowImport(false);
+        setImportRows([]);
+        setImportFile(null);
+        await loadTxns();
+      } else {
+        const detail = data.row_errors ? `${data.row_errors.length} row(s) failed to import — nothing was saved. Fix them and try again.` : null;
+        setError(detail || data.detail || data.error || "Import failed.");
+      }
+    } catch {
+      setError("Network error — check your connection.");
+    }
+    setCommitting(false);
+  };
+
   const grouped = TYPE_ORDER.map((type) => ({
     type,
     items: accounts.filter((a) => a.account_type === type),
@@ -283,6 +381,9 @@ const Bookkeeping = () => {
             )}
             {!needsPlan && !loading && tab === "transactions" && canTransact && (
               <>
+                <Button size="sm" variant="outline" onClick={openImport}>
+                  <Upload size={14} className="mr-1" /> Import Records
+                </Button>
                 <Button size="sm" variant="outline" onClick={() => openTxnForm("income")}
                   className="text-primary border-primary/40 hover:bg-primary/10">
                   <ArrowDownCircle size={14} className="mr-1" /> Add Income
@@ -338,6 +439,122 @@ const Bookkeeping = () => {
         {loading && (
           <div className="flex items-center gap-3 text-muted-foreground py-20 justify-center">
             <Loader2 className="animate-spin" size={20} /> Loading…
+          </div>
+        )}
+
+        {showImport && (
+          <div className="fixed inset-0 z-50 bg-black/40 flex items-start justify-center p-4 overflow-y-auto" onClick={() => setShowImport(false)}>
+            <div className="rounded-2xl border border-border bg-card p-6 shadow-xl w-full max-w-3xl mt-10 mb-10" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="font-bold text-lg">Import historical records</h2>
+                <button onClick={() => setShowImport(false)} className="text-muted-foreground hover:text-foreground"><X size={18} /></button>
+              </div>
+
+              {importRows.length === 0 ? (
+                <>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Upload a CSV of past income and expenses to bring your books up to date. Columns:
+                    {" "}<code className="text-xs bg-surface-muted px-1 py-0.5 rounded">date</code>,{" "}
+                    <code className="text-xs bg-surface-muted px-1 py-0.5 rounded">description</code>,{" "}
+                    <code className="text-xs bg-surface-muted px-1 py-0.5 rounded">amount</code> are required;{" "}
+                    <code className="text-xs bg-surface-muted px-1 py-0.5 rounded">type</code> (expense/income),{" "}
+                    <code className="text-xs bg-surface-muted px-1 py-0.5 rounded">category</code>, and{" "}
+                    <code className="text-xs bg-surface-muted px-1 py-0.5 rounded">vendor</code> are optional —
+                    if you leave out <code className="text-xs bg-surface-muted px-1 py-0.5 rounded">type</code>,
+                    a negative amount is treated as an expense and a positive amount as income.
+                  </p>
+                  <div className="space-y-3">
+                    <div>
+                      <label className="text-xs font-medium block mb-1 text-muted-foreground">CSV file</label>
+                      <input ref={importFileInput} type="file" accept=".csv,text/csv"
+                        onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+                        className="w-full text-sm file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-primary/10 file:text-primary file:font-medium" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium block mb-1 text-muted-foreground">Paid from / deposited to</label>
+                      <select value={importPaymentAccount} onChange={(e) => setImportPaymentAccount(e.target.value)}
+                        className="w-full px-3 py-2 rounded-lg border border-border bg-card text-sm outline-none focus:border-primary">
+                        <option value="">Choose…</option>
+                        {assetAccounts.map((a) => (
+                          <option key={a.id} value={a.account_code}>{a.account_code} — {a.name}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-muted-foreground mt-1">Applied to every row in this file — split multiple bank accounts into separate imports.</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-5">
+                    <Button size="sm" onClick={handleImportPreview} disabled={previewing || !importFile || !importPaymentAccount}
+                      className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
+                      {previewing ? <Loader2 size={14} className="animate-spin mr-1" /> : <Upload size={14} className="mr-1" />}
+                      Preview
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => setShowImport(false)}>Cancel</Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {importFileWarning && (
+                    <div className="p-2.5 rounded-lg text-xs mb-3 border border-amber-300 bg-amber-50 text-amber-800">{importFileWarning}</div>
+                  )}
+                  <p className="text-sm text-muted-foreground mb-3">
+                    {importReadyRows.length} of {importRows.length} row{importRows.length === 1 ? "" : "s"} ready to import.
+                    {importSkippedCount > 0 && " Rows with errors or no matching category are skipped — pick a category below or fix the file and re-upload."}
+                  </p>
+                  <div className="max-h-96 overflow-y-auto rounded-xl border border-border">
+                    <table className="w-full text-sm">
+                      <thead className="sticky top-0 bg-surface-muted">
+                        <tr className="border-b border-border">
+                          {["Date", "Type", "Description", "Amount", "Category", ""].map((h) => (
+                            <th key={h} className="text-left px-3 py-2 text-xs text-muted-foreground font-semibold uppercase tracking-wider">{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {importRows.map((r) => {
+                          const candidates = accounts.filter(
+                            (a) => a.is_active && a.account_type === (r.type === "expense" ? "expense" : "revenue")
+                          );
+                          return (
+                            <tr key={r.row_index} className={`border-b border-border/60 last:border-0 ${r.error ? "bg-destructive/5" : ""}`}>
+                              <td className="px-3 py-2 whitespace-nowrap text-muted-foreground">{fmtDate(r.date)}</td>
+                              <td className="px-3 py-2 capitalize text-muted-foreground">{r.type || "—"}</td>
+                              <td className="px-3 py-2">{r.description || "—"}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">{r.amount ? money(r.amount) : "—"}</td>
+                              <td className="px-3 py-2">
+                                {r.error ? (
+                                  <span className="text-xs text-destructive">{r.error}</span>
+                                ) : (
+                                  <select value={r.account_code || ""} onChange={(e) => setImportRowAccount(r.row_index, e.target.value)}
+                                    className="w-full px-2 py-1 rounded-md border border-border bg-card text-xs outline-none focus:border-primary">
+                                    <option value="">Choose…</option>
+                                    {candidates.map((a) => (
+                                      <option key={a.id} value={a.account_code}>{a.account_code} — {a.name}</option>
+                                    ))}
+                                  </select>
+                                )}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {!r.error && !r.account_code && <span className="text-xs text-amber-600">skipped</span>}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex items-center gap-2 mt-5">
+                    <Button size="sm" onClick={handleImportCommit} disabled={committing || importReadyRows.length === 0}
+                      className="bg-primary text-primary-foreground hover:bg-[hsl(var(--primary-dim))]">
+                      {committing ? <Loader2 size={14} className="animate-spin mr-1" /> : <Plus size={14} className="mr-1" />}
+                      Import {importReadyRows.length} transaction{importReadyRows.length === 1 ? "" : "s"}
+                    </Button>
+                    <Button size="sm" variant="outline" onClick={() => { setImportRows([]); setImportFile(null); }} disabled={committing}>
+                      Start over
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         )}
 
